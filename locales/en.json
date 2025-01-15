@@ -1,0 +1,43 @@
+{
+  "imageEditor": "Image Editor",
+  "import": "Import",
+  "save": "Save",
+  "newCanvas": "New Canvas",
+  "settings": "Settings",
+  "appearance": "Appearance",
+  "darkMode": "Dark Mode",
+  "colorFormat": "Color Format",
+  "language": "Language",
+  "layers": "Layers",
+  "color": "Color",
+  "selectedColor": "Selected color",
+  "importImage": "Import Image",
+  "uploadImageDescription": "Upload an image file to edit",
+  "image": "Image",
+  "enterWidth": "Enter canvas width",
+  "enterHeight": "Enter canvas height",
+  "exportSuccess": "Image exported successfully!",
+  "toolSelected": "Selected tool: {{tool}}",
+  "toolbar": {
+    "title": "Toolbar",
+    "description": "Use these tools to edit your image"
+  },
+  "canvas": {
+    "title": "Canvas",
+    "description": "Your image will appear here"
+  },
+  "sidebar": {
+    "title": "Sidebar",
+    "description": "Manage layers and colors here"
+  },
+  "tools": {
+    "crop": "Crop",
+    "move": "Move",
+    "text": "Text",
+    "draw": "Draw",
+    "layers": "Layers",
+    "adjust": "Adjust",
+    "effects": "Effects"
+  }
+}
+

@@ -1,0 +1,47 @@
+{
+  "imageEditor": "محرر الصور",
+  "import": "استيراد",
+  "save": "حفظ",
+  "newCanvas": "لوحة جديدة",
+  "settings": "الإعدادات",
+  "appearance": "المظهر",
+  "darkMode": "الوضع الداكن",
+  "colorFormat": "تنسيق اللون",
+  "language": "اللغة",
+  "layers": "الطبقات",
+  "color": "اللون",
+  "selectedColor": "اللون المحدد",
+  "importImage": "استيراد صورة",
+  "uploadImageDescription": "قم بتحميل ملف صورة للتعديل",
+  "image": "صورة",
+  "enterWidth": "أدخل عرض اللوحة",
+  "enterHeight": "أدخل ارتفاع اللوحة",
+  "exportSuccess": "تم تصدير الصورة بنجاح!",
+  "toolSelected": "الأداة المحددة: {{tool}}",
+  "toolbar": {
+    "title": "شريط الأدوات",
+    "description": "استخدم هذه الأدوات لتعديل صورتك"
+  },
+  "canvas": {
+    "title": "اللوحة",
+    "description": "ستظهر صورتك هنا"
+  },
+  "sidebar": {
+    "title": "الشريط الجانبي",
+    "description": "إدارة الطبقات والألوان هنا"
+  },
+  "tools": {
+    "select": "تحديد",
+    "crop": "اقتصاص",
+    "move": "تحريك",
+    "text": "نص",
+    "draw": "رسم",
+    "eraser": "ممحاة",
+    "layers": "طبقات",
+    "adjust": "تعديل",
+    "effects": "تأثيرات"
+  },
+  "textInput": "إدخال النص",
+  "fontSize": "حجم الخط"
+}
+

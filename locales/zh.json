@@ -1,0 +1,47 @@
+{
+  "imageEditor": "图像编辑器",
+  "import": "导入",
+  "save": "保存",
+  "newCanvas": "新画布",
+  "settings": "设置",
+  "appearance": "外观",
+  "darkMode": "深色模式",
+  "colorFormat": "颜色格式",
+  "language": "语言",
+  "layers": "图层",
+  "color": "颜色",
+  "selectedColor": "选中的颜色",
+  "importImage": "导入图像",
+  "uploadImageDescription": "上传图像文件进行编辑",
+  "image": "图像",
+  "enterWidth": "输入画布宽度",
+  "enterHeight": "输入画布高度",
+  "exportSuccess": "图像导出成功！",
+  "toolSelected": "已选择工具：{{tool}}",
+  "toolbar": {
+    "title": "工具栏",
+    "description": "使用这些工具编辑你的图像"
+  },
+  "canvas": {
+    "title": "画布",
+    "description": "你的图像将显示在这里"
+  },
+  "sidebar": {
+    "title": "侧边栏",
+    "description": "在这里管理图层和颜色"
+  },
+  "tools": {
+    "select": "选择",
+    "crop": "裁剪",
+    "move": "移动",
+    "text": "文本",
+    "draw": "绘画",
+    "eraser": "橡皮擦",
+    "layers": "图层",
+    "adjust": "调整",
+    "effects": "效果"
+  },
+  "textInput": "文本输入",
+  "fontSize": "字体大小"
+}
+

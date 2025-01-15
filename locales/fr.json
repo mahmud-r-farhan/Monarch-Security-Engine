@@ -1,0 +1,47 @@
+{
+  "imageEditor": "Éditeur d'images",
+  "import": "Importer",
+  "save": "Enregistrer",
+  "newCanvas": "Nouveau canevas",
+  "settings": "Paramètres",
+  "appearance": "Apparence",
+  "darkMode": "Mode sombre",
+  "colorFormat": "Format de couleur",
+  "language": "Langue",
+  "layers": "Calques",
+  "color": "Couleur",
+  "selectedColor": "Couleur sélectionnée",
+  "importImage": "Importer une image",
+  "uploadImageDescription": "Télécharger un fichier image à éditer",
+  "image": "Image",
+  "enterWidth": "Entrez la largeur du canevas",
+  "enterHeight": "Entrez la hauteur du canevas",
+  "exportSuccess": "Image exportée avec succès !",
+  "toolSelected": "Outil sélectionné : {{tool}}",
+  "toolbar": {
+    "title": "Barre d'outils",
+    "description": "Utilisez ces outils pour éditer votre image"
+  },
+  "canvas": {
+    "title": "Canevas",
+    "description": "Votre image apparaîtra ici"
+  },
+  "sidebar": {
+    "title": "Barre latérale",
+    "description": "Gérez les calques et les couleurs ici"
+  },
+  "tools": {
+    "select": "Sélectionner",
+    "crop": "Recadrer",
+    "move": "Déplacer",
+    "text": "Texte",
+    "draw": "Dessiner",
+    "eraser": "Gomme",
+    "layers": "Calques",
+    "adjust": "Ajuster",
+    "effects": "Effets"
+  },
+  "textInput": "Saisie de texte",
+  "fontSize": "Taille de police"
+}
+
