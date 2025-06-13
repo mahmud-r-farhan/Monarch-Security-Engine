@@ -198,4 +198,4 @@ npm run dev
 This Image Editor application provides a comprehensive set of tools for both casual users and professionals to edit and enhance their images directly in the browser. Its intuitive interface, coupled with powerful features, makes it a versatile choice for various image editing needs.
 
 
-# Under Development
+## Under Development
