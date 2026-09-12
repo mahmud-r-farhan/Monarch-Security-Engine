@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monarch Security Engine</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦋</text></svg>">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🦋</span>
+    <div><div class="brand-name">Monarch Security Engine</div><div class="brand-sub">Automated Web Vulnerability Scanner &amp; Network Analyzer</div></div>
+  </div>
+  <form id="scan-form" class="scan-form" autocomplete="off">
+    <input id="target" type="text" placeholder="https://your-app.example  (or http://localhost:4000 for the demo target)" required spellcheck="false">
+    <select id="engine" title="Crawler engine"><option value="fetch">fetch engine</option><option value="playwright">browser (Playwright)</option></select>
+    <input id="pages" type="number" min="1" max="100" value="25" title="Max pages">
+    <button id="scan-btn" type="submit">Scan</button>
+  </form>
+  <div class="status-pill" id="health">connecting…</div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <div class="side-head">Scan history <button id="refresh-history" class="ghost" title="Refresh">↻</button></div>
+    <ul id="history" class="history"></ul>
+    <div class="side-foot">
+      <div class="disclaimer">Only scan systems you own or are explicitly authorised to test.</div>
+    </div>
+  </aside>
+
+  <section class="content">
+    <div id="empty" class="empty">
+      <div class="empty-inner">
+        <div class="empty-logo">🦋</div>
+        <h1>Point Monarch at a target</h1>
+        <p>Monarch crawls the site, records every request like a DevTools Network tab, runs 60+ passive security checks (headers, cookies, JWTs, CORS, DOM-XSS sinks, exposed files, secrets) and then produces an AI-written remediation plan.</p>
+        <div class="empty-grid">
+          <div><b>1</b>Enter a URL above</div>
+          <div><b>2</b>Watch the live network log &amp; findings stream in</div>
+          <div><b>3</b>Read the AI plan, export Markdown / HTML (PDF)</div>
+        </div>
+        <p class="hint">No target handy? Run <code>npm run demo:target</code> and scan <code>http://localhost:4000</code>.</p>
+      </div>
+    </div>
+
+    <div id="scan-view" class="scan-view hidden">
+      <div class="summary-bar">
+        <div class="grade" id="grade">–</div>
+        <div class="summary-main">
+          <div class="summary-target" id="s-target"></div>
+          <div class="summary-meta" id="s-meta"></div>
+          <div class="progress"><div id="progress-bar"></div></div>
+          <div class="live-status" id="live-status"></div>
+        </div>
+        <div class="sev-counts" id="sev-counts"></div>
+        <div class="export" id="export"></div>
+      </div>
+
+      <nav class="tabs">
+        <button data-tab="findings" class="active">Findings <span id="t-findings">0</span></button>
+        <button data-tab="ai">AI Insights</button>
+        <button data-tab="network">Network <span id="t-network">0</span></button>
+        <button data-tab="cookies">Cookies &amp; Storage</button>
+        <button data-tab="inventory">Inventory</button>
+      </nav>
+
+      <div class="panels">
+        <div class="panel active" id="panel-findings">
+          <div class="toolbar">
+            <input id="f-filter" placeholder="Filter findings…">
+            <div class="chips" id="sev-chips"></div>
+          </div>
+          <div id="findings" class="findings"></div>
+        </div>
+
+        <div class="panel" id="panel-ai">
+          <div id="ai" class="ai"></div>
+        </div>
+
+        <div class="panel" id="panel-network">
+          <div class="toolbar">
+            <input id="n-filter" placeholder="Filter URLs…">
+            <div class="chips" id="type-chips"></div>
+            <div class="net-summary" id="net-summary"></div>
+          </div>
+          <div class="net-wrap">
+            <table class="net">
+              <thead><tr><th>#</th><th>Method</th><th>Status</th><th>Type</th><th>Size</th><th>Time</th><th>Name</th><th>Waterfall</th></tr></thead>
+              <tbody id="net-body"></tbody>
+            </table>
+            <div class="net-detail hidden" id="net-detail"></div>
+          </div>
+        </div>
+
+        <div class="panel" id="panel-cookies"><div id="cookies"></div></div>
+        <div class="panel" id="panel-inventory"><div id="inventory"></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>

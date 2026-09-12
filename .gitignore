@@ -1,2 +1,10 @@
 # env files
 .env*
+!.env.example
+
+# dependencies
+node_modules/
+
+# generated reports & scan data
+reports/
+*.log
