@@ -1,0 +1,46 @@
+{
+  "imageEditor": "Bildbearbeitung",
+  "import": "Importieren",
+  "save": "Speichern",
+  "newCanvas": "Neue Leinwand",
+  "settings": "Einstellungen",
+  "appearance": "Erscheinungsbild",
+  "darkMode": "Dunkelmodus",
+  "colorFormat": "Farbformat",
+  "language": "Sprache",
+  "layers": "Ebenen",
+  "color": "Farbe",
+  "selectedColor": "Ausgewählte Farbe",
+  "importImage": "Bild importieren",
+  "uploadImageDescription": "Laden Sie eine Bilddatei zum Bearbeiten hoch",
+  "image": "Bild",
+  "enterWidth": "Geben Sie die Breite der Leinwand ein",
+  "enterHeight": "Geben Sie die Höhe der Leinwand ein",
+  "exportSuccess": "Bild erfolgreich exportiert!",
+  "toolSelected": "Ausgewähltes Werkzeug: {{tool}}",
+  "toolbar": {
+    "title": "Werkzeugleiste",
+    "description": "Verwenden Sie diese Werkzeuge, um Ihr Bild zu bearbeiten"
+  },
+  "canvas": {
+    "title": "Leinwand",
+    "description": "Ihr Bild wird hier angezeigt"
+  },
+  "sidebar": {
+    "title": "Seitenleiste",
+    "description": "Verwalten Sie hier Ebenen und Farben"
+  },
+  "tools": {
+    "select": "Auswählen",
+    "crop": "Zuschneiden",
+    "move": "Verschieben",
+    "text": "Text",
+    "draw": "Zeichnen",
+    "eraser": "Radiergummi",
+    "layers": "Ebenen",
+    "adjust": "Anpassen",
+    "effects": "Effekte"
+  },
+  "textInput": "Texteingabe",
+  "fontSize": "Schriftgröße"
+}

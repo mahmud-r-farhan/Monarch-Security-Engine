@@ -1,0 +1,42 @@
+{
+  "imageEditor": "Editor de Imágenes",
+  "import": "Importar",
+  "save": "Guardar",
+  "newCanvas": "Nuevo Lienzo",
+  "settings": "Ajustes",
+  "appearance": "Apariencia",
+  "darkMode": "Modo Oscuro",
+  "colorFormat": "Formato de Color",
+  "language": "Idioma",
+  "layers": "Capas",
+  "color": "Color",
+  "selectedColor": "Color seleccionado",
+  "importImage": "Importar Imagen",
+  "uploadImageDescription": "Sube un archivo de imagen para editar",
+  "image": "Imagen",
+  "enterWidth": "Ingrese el ancho del lienzo",
+  "enterHeight": "Ingrese la altura del lienzo",
+  "exportSuccess": "¡Imagen exportada con éxito!",
+  "toolSelected": "Herramienta seleccionada: {{tool}}",
+  "toolbar": {
+    "title": "Barra de herramientas",
+    "description": "Usa estas herramientas para editar tu imagen"
+  },
+  "canvas": {
+    "title": "Lienzo",
+    "description": "Tu imagen aparecerá aquí"
+  },
+  "sidebar": {
+    "title": "Barra lateral",
+    "description": "Gestiona capas y colores aquí"
+  },
+  "tools": {
+    "crop": "Recortar",
+    "move": "Mover",
+    "text": "Texto",
+    "draw": "Dibujar",
+    "layers": "Capas",
+    "adjust": "Ajustar",
+    "effects": "Efectos"
+  }
+}
