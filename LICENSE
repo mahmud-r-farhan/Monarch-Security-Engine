@@ -1,0 +1,41 @@
+MIT License with Custom Defense Research & Usage Terms
+
+Copyright (c) 2026
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction to rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of the Software, subject
+to the following conditions and mandatory terms:
+
+Standard MIT Conditions:
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Defense Research & Educational Purpose Clause:
+This Software is specifically designed and intended strictly for Armed Forces
+Defense Research Purposes, cybersecurity auditing, educational evaluation,
+and testing authorized self-hosted applications or infrastructure.
+
+Restricted Authorization & Consent Requirement:
+The Software involves automated dynamic crawling, active payload testing,
+and network inspection. Users are strictly required to obtain explicit
+written permission from the domain or system owner before executing any
+scans. Unauthorized testing against third-party systems or non-consenting
+targets is strictly prohibited and illegal.
+
+Absolute Disclaimer of Liability & Use At Your Own Risk:
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+IN NO EVENT SHALL THE AUTHORS, COPYRIGHT HOLDERS, OR ASSOCIATED ENTITIES
+BE LIABLE FOR ANY CLAIM, DAMAGES, SYSTEM DOWN-TIME, DATA LOSS, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+YOU EXPRESSLY ACKNOWLEDGE AND AGREE THAT YOUR USE OF THIS SOFTWARE IS ENTIRELY
+AT YOUR OWN RISK. THE USER ASSUMES FULL RESPONSIBILITY FOR ALL ACTIONS,
+LEGAL CONSEQUENCES, AND POTENTIAL IMPACTS RESULTING FROM THE DEPLOYMENT OR
+EXECUTION OF THIS SOFTWARE.
