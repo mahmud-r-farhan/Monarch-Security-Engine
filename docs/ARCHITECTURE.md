@@ -29,6 +29,22 @@ It is the reference for the rules in [CONTRIBUTING.md](../CONTRIBUTING.md) — n
 │           engine/ · modules/ · scanRegistry · ai/ · report/       │
 │                      (services & business logic)                  │
 └───────────────────────────────────────────────────────────────────┘
+
+  ai/ internal structure (each piece is independently testable):
+
+        insights.js (facade) ──► registry.js ──► providers/index.js
+             │                      │                  │
+             ├─► prompt.js          │                  ├─ openrouter.js ─┐
+             ├─► providers/<id>.js ─┤                  ├─ openai.js ─────┤─ openaiCompatible.js
+             ├─► parse.js           │                  ├─ anthropic.js   │
+             └─► heuristic.js       │                  ├─ gemini.js      │
+                                    │                  └─ ollama.js ────┘
+                                    │                         │
+                                    ▼                         ▼
+                            normalizeOllamaBaseUrl       http.js (timeout, ok-parse)
+
+        health.js ──► providers/<id>.listModels + models endpoints (30s cache)
+        routes/ai.js ──► /api/ai/health, /api/ai/providers
 ```
 
 ---
@@ -71,7 +87,7 @@ It is the reference for the rules in [CONTRIBUTING.md](../CONTRIBUTING.md) — n
         │    ├── checks/seo.js
         │    ├── checks/apisecurity.js
         │    ├── checks/wpadmin.js
-        │    └── ai/insights.js   (providers: openrouter · openai · anthropic · gemini · ollama · heuristic)
+        │    └── ai/insights.js   (slim facade → registry · prompt · parse · heuristic · providers/* · health)
         │
         ├── scanRegistry.js
         ├── report/markdown.js ◀── report/html.js
@@ -121,6 +137,7 @@ monitorService / notificationService / wsServer for boot-time init.
 | `routes/scans.js` | Start/stream/list/export/delete scans | `router` |
 | `routes/monitors.js` | Monitor CRUD + check/toggle, notification REST (list/read/clear) | `router` |
 | `routes/tools.js` | Page speed, TLS, recon, load test, netdiscovery, poke, db routes | `router` |
+| `routes/ai.js` | AI provider health probes (active / one / all / unsaved config) + provider list | `router` |
 | `engine/scanner.js` | Orchestrates crawl → checks → score → AI insights, emits progress events | `runScan`, `summarizeScan` |
 | `engine/crawler.js` | Fetch & Playwright crawlers, DevTools-style network log capture | `crawl` |
 | `engine/network.js` | Request log with severity/cap handling | `NetworkLog` |
@@ -139,7 +156,13 @@ monitorService / notificationService / wsServer for boot-time init.
 | `modules/ws.js` | WebSocket server: subscriptions, heartbeat, broadcast | `wsServer` |
 | `modules/powerup.js` | Optional bridge to Python/Go microservices; graceful degradation when offline | `checkPowerUpServices` |
 | `middleware/rateLimiter.js` | In-memory sliding-window limiter (scan 10/min, api 120/min, discovery 20/min) | `scanLimiter`, `apiLimiter`, `discoveryLimiter` |
-| `ai/insights.js` | AI remediation via OpenRouter/OpenAI/Anthropic/Gemini/Ollama (plain fetch) with deterministic heuristic fallback; `normalizeOllamaBaseUrl` validates user-supplied server URLs | `generateInsights`, `detectProvider`, `DEFAULT_MODEL`, `PROVIDERS`, `normalizeOllamaBaseUrl` |
+| `ai/insights.js` | **Slim facade** — `generateInsights` pipeline (resolve → prompt → provider → parse → heuristic fallback) + stable re-exports | `generateInsights` |
+| `ai/registry.js` | Provider ids, default models, env detection, Ollama URL normalization, effective-config resolution | `DEFAULT_MODEL`, `PROVIDERS`, `PROVIDER_INFO`, `detectProvider`, `resolveProviderConfig`, `normalizeOllamaBaseUrl` |
+| `ai/prompt.js` | System prompt contract + scan→prompt compaction | `SYSTEM`, `buildPrompt` |
+| `ai/parse.js` | Tolerant JSON parsing of model output (fences, smart quotes, trailing commas) | `parseModelJson` |
+| `ai/heuristic.js` | Deterministic offline analyst — the universal fallback | `heuristicInsights` |
+| `ai/providers/*` | One HTTP client per provider (`openrouter`, `openai`, `anthropic`, `gemini`, `ollama`) + shared `http.js` timeout/error helpers | `providers` registry |
+| `ai/health.js` | Provider reachability probes (models endpoints / `/api/tags`), 30s cache, actionable failure hints | `checkProvider`, `checkActiveProvider`, `checkAllProviders`, `resetAiHealthCache` |
 | `report/*.js` | Export renderers: markdown, standalone HTML, SARIF 2.1.0 | `renderMarkdown`, `renderHtml`, `renderSarif` |
 | `env.js` | `.env` loader | `loadEnv` |
 | `index.js` | Programmatic API surface for library consumers | re-exports `runScan`, checks, crawl, AI, report renderers |

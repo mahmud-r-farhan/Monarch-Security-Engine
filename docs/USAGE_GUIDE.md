@@ -141,6 +141,31 @@ OLLAMA_BASE_URL=http://localhost:11434 OLLAMA_MODEL=llama3.2 npm start
 - Monarch talks to Ollama's native `/api/chat` with `format: json`, so the remediation plan is parsed deterministically; if the model misbehaves, the offline heuristic analyst takes over automatically
 - Works with Ollama behind a reverse proxy or on another machine — the URL is fully configurable
 
+### AI provider health check (NEW)
+
+The AI modal has a **🔌 Test Connection** button that probes the provider with the values currently in the form — *before* saving. It tells you:
+
+- **Reachable / key valid**, with latency and how many models are available
+- **Ollama**: the list of installed models (so you can paste the exact name into the model field), or a hint like "Start it with: `ollama serve`" if the server is down
+- **Cloud providers**: whether the key was accepted (401/403 → key rejected, 429 → quota exhausted)
+
+Same check over the API:
+
+```bash
+# Probe the active provider
+curl http://localhost:3000/api/ai/health
+
+# Probe everything (status board)
+curl "http://localhost:3000/api/ai/health?all=1"
+
+# Probe one provider (fresh, skipping the 30s cache)
+curl "http://localhost:3000/api/ai/health?provider=ollama&fresh=1"
+
+# Test an unsaved config (what the modal's Test Connection button does)
+curl -X POST http://localhost:3000/api/ai/health -H "content-type: application/json" \
+  -d '{"provider":"ollama","baseUrl":"http://localhost:11434"}'
+```
+
 ## Exports
 
 In scan view, after completion:
@@ -189,6 +214,9 @@ curl -X POST http://localhost:3000/api/monitors -H "content-type: application/js
 # Point AI at a local Ollama server (NEW)
 curl -X POST http://localhost:3000/api/config -H "content-type: application/json" \
   -d '{"provider":"ollama","model":"llama3.2","baseUrl":"http://localhost:11434"}'
+
+# Check AI provider health (NEW)
+curl "http://localhost:3000/api/ai/health?all=1"
 
 # List notifications / unread count (NEW v2.1)
 curl "http://localhost:3000/api/notifications?limit=20"

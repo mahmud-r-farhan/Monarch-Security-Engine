@@ -32,7 +32,7 @@ npm run typecheck
 ```
 
 ## Before you open a PR
-- `npm test` and `npm run typecheck` must pass (33+ tests).
+- `npm test` and `npm run typecheck` must pass (43+ tests).
 - New endpoints must be added to the `/api/docs` list in `server.js` and documented in `README.md` + `docs/USAGE_GUIDE.md`.
 - New background behavior (monitors, notifications, speed) needs a unit test in `test/`.
 

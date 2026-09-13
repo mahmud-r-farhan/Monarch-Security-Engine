@@ -70,7 +70,14 @@ Everything you see in the Scanner tabs (Findings, AI Plan, Network, Cookies, Inv
 
 ## 4. How the AI providers work
 
-Monarch treats AI as **optional plumbing behind one interface** (`generateInsights`):
+Monarch treats AI as **optional plumbing behind one interface** (`generateInsights`). Internally the AI engine is split into small, single-purpose modules (`src/ai/`):
+
+- `registry.js` — provider ids, default models, env detection, Ollama URL normalization
+- `prompt.js` — the system prompt contract + scan→prompt compaction
+- `providers/*` — one thin HTTP client per provider + shared timeout/error helpers
+- `parse.js` — tolerant JSON parsing of model output (repairs fences, smart quotes, trailing commas)
+- `heuristic.js` — the deterministic offline analyst every failure falls back to
+- `health.js` — provider reachability probes with actionable hints
 
 | Provider | Where it runs | Needs | Config |
 |---|---|---|---|
@@ -82,6 +89,10 @@ Monarch treats AI as **optional plumbing behind one interface** (`generateInsigh
 | none (heuristic) | In-process | nothing | — |
 
 Selection order at startup: the `AI_PROVIDER` env var wins; otherwise the first configured key wins; `OLLAMA_BASE_URL` alone selects Ollama. You can also switch provider at runtime from the UI (AI pill) — that choice lives in the session and overrides env for subsequent scans.
+
+### Provider health check
+
+Before wasting a scan on a broken provider, the **🔌 Test Connection** button in the AI modal (or `GET /api/ai/health`) probes the endpoint: it lists available models (for Ollama) or validates the API key against the provider's models API (for cloud providers), reports latency, and translates failures into hints — "Start it with `ollama serve`", "key rejected", "quota exhausted". Results are cached for 30 seconds; the modal probes unsaved form values so you can test before saving.
 
 **Ollama specifics**: Monarch calls your server's native `/api/chat` endpoint with `format: json` (constraining the model to a JSON object) and `temperature 0.2` for deterministic output. Base URLs are normalized — `localhost:11434`, `192.168.1.20:11434`, `https://ollama.mycompany.com` all work; only `http(s)` schemes are accepted. Because the model runs locally, **scan data never leaves your machine**, which makes Ollama the right choice for internal systems with strict data-handling rules.
 
@@ -148,7 +159,7 @@ Copy `.env.example` → `.env` and set what you need (all optional):
 ```bash
 npm run dev          # server with --watch (auto-restart on change)
 npm run build        # rebuild the frontend after editing src/frontend/**
-npm test             # 34 unit & integration tests (node --test)
+npm test             # 43 unit & integration tests (node --test)
 npm run typecheck    # tsc --noEmit over the frontend TypeScript
 npm run app          # build + start in one command
 ```
@@ -191,6 +202,6 @@ All of it is plain JSON in your working directory — back it up, inspect it, or
 ## 9. Extending Monarch
 
 - **New security check** → add `engine/checks/<name>.js`, register it in `checks/index.js`, add a test. ([CONTRIBUTING.md](../CONTRIBUTING.md))
-- **New AI provider** → add a branch in `callProvider` (`ai/insights.js`), a `DEFAULT_MODEL` entry, and a UI option in the AI modal. Follow the Ollama pattern: normalize any user URL, parse JSON strictly, fall back to heuristics on failure.
+- **New AI provider** → create `ai/providers/<name>.js` with a `chat()` client, register it in `ai/providers/index.js` and `ai/registry.js` (`DEFAULT_MODEL`, `PROVIDERS`, `PROVIDER_ENV`, `PROVIDER_INFO`), add its health endpoint to `ai/health.js`, and a UI option in the AI modal. Follow the Ollama pattern: normalize any user URL, parse JSON strictly, fall back to heuristics on failure.
 - **New side tool** → service in `modules/`, router in `routes/tools.js`, one component per tab in `frontend/components/`.
 - **New user-facing event** → emit through `notificationService.notify()` so it lands in the bell, toasts, and WebSocket in one step.

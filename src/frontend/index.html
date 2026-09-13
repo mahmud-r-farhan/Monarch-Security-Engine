@@ -394,7 +394,8 @@
         <div class="form-group" id="ai-url-group" style="display:none;"><label>Ollama Server URL</label><input id="ai-url-input" placeholder="http://localhost:11434" spellcheck="false"><div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">No API key needed — point at your local or remote Ollama server. Default: http://localhost:11434</div></div>
         <div class="form-group" id="ai-key-group"><label>API Key</label><input id="ai-key-input" type="password" placeholder="sk-or-v1-..." autocomplete="off"></div>
         <div class="form-group" id="ai-model-group"><label>Model</label><input id="ai-model-input" value="deepseek/deepseek-r1-distill-qwen-7b" placeholder="model name"></div>
-        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="ai-clear-btn">Use Offline</button><button type="submit" class="btn btn-primary">Save</button></div>
+        <div id="ai-health-result" class="ai-health-result hidden"></div>
+        <div class="modal-actions"><button type="button" class="btn btn-ghost" id="ai-test-btn">🔌 Test Connection</button><button type="button" class="btn btn-ghost" id="ai-clear-btn">Use Offline</button><button type="submit" class="btn btn-primary">Save</button></div>
       </form>
     </div>
   </div>

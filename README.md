@@ -130,6 +130,9 @@ go run services/go/main.go -server -port 5002
 | `GET` | `/api/docs` | List all API endpoints |
 | `GET` | `/api/config` | AI provider config |
 | `POST` | `/api/config` | Set AI provider/key/model |
+| `GET` | `/api/ai/health` | Probe active AI provider (`?all=1` every provider, `?provider=x`, `?fresh=1` skip cache) |
+| `POST` | `/api/ai/health` | Probe a not-yet-saved AI config before saving |
+| `GET` | `/api/ai/providers` | List providers + default models |
 | `POST` | `/api/scans` | Start scan (rate-limited) |
 | `GET` | `/api/scans` | List scans |
 | `GET` | `/api/scans/:id` | Full report JSON |
@@ -223,7 +226,7 @@ src/
 ├── engine/            # Crawler, scanner, scoring
 ├── modules/           # Speed, notifications, monitor, netdiscovery, TLS, recon, powerup
 ├── middleware/        # Rate limiting
-├── ai/                # OpenRouter, OpenAI, Anthropic, Gemini, Ollama, heuristic
+├── ai/                # Modular AI engine: providers/, registry, prompt, parse, heuristic, health
 ├── report/            # Markdown, HTML, SARIF
 ├── scanRegistry.js    # Scan state + disk persistence singleton
 ├── server.js          # Slim Express orchestrator

@@ -3,18 +3,21 @@ import http from 'node:http';
 import path from 'node:path';
 import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { detectProvider, DEFAULT_MODEL, PROVIDERS, normalizeOllamaBaseUrl } from './ai/insights.js';
+import { detectProvider } from './ai/insights.js';
+import { DEFAULT_MODEL, PROVIDERS, PROVIDER_INFO, normalizeOllamaBaseUrl } from './ai/registry.js';
 import { loadEnv } from './env.js';
 
 import { wsServer } from './modules/ws.js';
 import { monitorService } from './modules/monitor.js';
 import { notificationService } from './modules/notifications.js';
 import { scanRegistry } from './scanRegistry.js';
+import { resetAiHealthCache as aiHealthCacheReset } from './ai/health.js';
 import { apiLimiter } from './middleware/rateLimiter.js';
 
 import scanRoutes from './routes/scans.js';
 import monitorRoutes from './routes/monitors.js';
 import toolRoutes from './routes/tools.js';
+import aiRoutes from './routes/ai.js';
 
 loadEnv();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -175,6 +178,9 @@ app.get('/api/docs', (req, res) => {
       { method: 'GET', path: '/api/metrics', description: 'Prometheus metrics' },
       { method: 'GET', path: '/api/config', description: 'AI provider config' },
       { method: 'POST', path: '/api/config', description: 'Set AI config' },
+      { method: 'GET', path: '/api/ai/health', description: 'Probe active AI provider (?all=1 for every provider, ?provider=x for one, ?fresh=1 to skip cache)' },
+      { method: 'POST', path: '/api/ai/health', description: 'Probe a not-yet-saved AI config before saving' },
+      { method: 'GET', path: '/api/ai/providers', description: 'List AI providers and default models' },
       { method: 'POST', path: '/api/scans', description: 'Start security scan', rateLimited: true },
       { method: 'GET', path: '/api/scans', description: 'List recent scans' },
       { method: 'GET', path: '/api/scans/:id', description: 'Get scan report' },
@@ -218,14 +224,7 @@ app.get('/api/config', (req, res) => {
     model: app.locals.runtimeAiConfig?.model || process.env.AI_MODEL || DEFAULT_MODEL[provider] || '',
     hasApiKey: aiKeyConfigured(),
     baseUrl: app.locals.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || '',
-    availableProviders: [
-      { id: 'openrouter', name: 'OpenRouter (Default / Multi-Model)', defaultModel: DEFAULT_MODEL.openrouter },
-      { id: 'openai', name: 'OpenAI (GPT-4o, GPT-4o-mini)', defaultModel: DEFAULT_MODEL.openai },
-      { id: 'anthropic', name: 'Anthropic (Claude 3.5 Sonnet / Haiku)', defaultModel: DEFAULT_MODEL.anthropic },
-      { id: 'gemini', name: 'Google Gemini (Gemini 1.5 Flash)', defaultModel: DEFAULT_MODEL.gemini },
-      { id: 'ollama', name: 'Ollama (Local / Self-hosted)', defaultModel: DEFAULT_MODEL.ollama },
-      { id: 'none', name: 'Deterministic Heuristic (Offline / No Key)', defaultModel: 'monarch-rules-v1' },
-    ],
+    availableProviders: PROVIDER_INFO,
   });
 });
 
@@ -246,6 +245,8 @@ app.post('/api/config', (req, res) => {
     model: model || DEFAULT_MODEL[provider] || '',
   };
   if (provider === 'ollama') app.locals.ollamaBaseUrl = ollamaBaseUrl;
+  // Invalidate cached AI health so the next probe reflects the new config
+  if (typeof aiHealthCacheReset === 'function') aiHealthCacheReset();
   res.json({
     ok: true,
     message: 'AI Configuration updated in session',
@@ -263,6 +264,7 @@ app.post('/api/config', (req, res) => {
 app.use('/api', scanRoutes);     // /api/scans…
 app.use('/api', monitorRoutes);  // /api/monitors… + /api/notifications…
 app.use('/api', toolRoutes);     // /api/speed…, /api/tls…, /api/recon…, etc.
+app.use('/api', aiRoutes);       // /api/ai/health…, /api/ai/providers
 
 /* ------------------------------------------------------------------ */
 /* Frontend fallback (SPA)                                            */

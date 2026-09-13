@@ -9,5 +9,6 @@ export { runChecks, scoreFindings, SEVERITY_ORDER } from './engine/checks/index.
 export { NetworkLog } from './engine/network.js';
 export { crawl } from './engine/crawler.js';
 export { generateInsights, heuristicInsights, detectProvider } from './ai/insights.js';
+export { checkProvider, checkActiveProvider, checkAllProviders } from './ai/health.js';
 export { renderMarkdown } from './report/markdown.js';
 export { renderHtml } from './report/html.js';

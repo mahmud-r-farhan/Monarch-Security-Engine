@@ -1,4 +1,4 @@
-import { $, $$, toast } from '../utils.js';
+import { $, $$, toast, escapeHtml } from '../utils.js';
 import { state } from '../state.js';
 
 export function setupModals() {
@@ -13,6 +13,7 @@ export function setupModals() {
     ( $('ai-model-input') as HTMLInputElement).value = state.aiConfig.model || '';
     ( $('ai-url-input') as HTMLInputElement).value = state.aiConfig.baseUrl || '';
     updateProviderFields();
+    hideHealthResult();
     $('ai-modal').classList.remove('hidden');
   });
 
@@ -31,9 +32,41 @@ export function setupModals() {
     ( $('ai-model-input') as HTMLInputElement).value = defaults[prov] || '';
     $('ai-key-group').style.display = prov === 'ollama' || prov === 'none' ? 'none' : 'block';
     $('ai-url-group').style.display = prov === 'ollama' ? 'block' : 'none';
+    hideHealthResult();
   };
 
   $('ai-provider-select').addEventListener('change', updateProviderFields);
+
+  // Health probe against the form's current (possibly unsaved) values
+  const testBtn = $('ai-test-btn') as HTMLButtonElement | null;
+  if (testBtn) testBtn.addEventListener('click', async () => {
+    const provider = ( $('ai-provider-select') as HTMLSelectElement).value;
+    const body: any = { provider };
+    const keyVal = ( $('ai-key-input') as HTMLInputElement).value.trim();
+    const urlVal = ( $('ai-url-input') as HTMLInputElement).value.trim();
+    const modelVal = ( $('ai-model-input') as HTMLInputElement).value.trim();
+    if (keyVal) body.apiKey = keyVal;
+    if (urlVal) body.baseUrl = urlVal;
+    if (modelVal) body.model = modelVal;
+
+    testBtn.disabled = true;
+    testBtn.textContent = '⏳ Probing…';
+    showHealthResult({ pending: true });
+    try {
+      const res = await fetch('/api/ai/health', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      showHealthResult(data);
+    } catch (err: any) {
+      showHealthResult({ ok: false, error: err.message });
+    } finally {
+      testBtn.disabled = false;
+      testBtn.textContent = '🔌 Test Connection';
+    }
+  });
 
   $('ai-config-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -96,6 +129,31 @@ export function setupModals() {
   $$('.backdrop').forEach(bd => {
     bd.addEventListener('click', (e) => { if (e.target === bd) bd.classList.add('hidden'); });
   });
+}
+
+function showHealthResult(data: any) {
+  const box = $('ai-health-result');
+  if (!box) return;
+  box.classList.remove('hidden', 'ok', 'fail');
+  if (data.pending) {
+    box.innerHTML = '⏳ Probing provider…';
+    return;
+  }
+  if (data.ok) {
+    box.classList.add('ok');
+    const models = Array.isArray(data.models) && data.models.length
+      ? `<span class="hint">Models: ${escapeHtml(data.models.slice(0, 8).join(', '))}${data.models.length > 8 ? ' …' : ''}</span>`
+      : data.detail && /no models/i.test(data.detail) ? '<span class="hint">Pull a model first, e.g. <code>ollama pull llama3.2</code></span>' : '';
+    box.innerHTML = `✅ <strong>${escapeHtml(data.provider)}</strong> — ${escapeHtml(data.detail || 'reachable')} (${data.latencyMs ?? 0}ms)${models}`;
+  } else {
+    box.classList.add('fail');
+    box.innerHTML = `❌ <strong>${escapeHtml(data.provider || 'provider')}</strong> — ${escapeHtml(data.error || 'unreachable')}${data.hint ? `<span class="hint">💡 ${escapeHtml(data.hint)}</span>` : ''}`;
+  }
+}
+
+function hideHealthResult() {
+  const box = $('ai-health-result');
+  if (box) box.classList.add('hidden');
 }
 
 export function updateAiLabel() {
