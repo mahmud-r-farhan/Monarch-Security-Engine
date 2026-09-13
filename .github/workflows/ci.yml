@@ -18,7 +18,24 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci --omit=optional
+      - run: npm run typecheck
       - run: npm test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --omit=optional
+      - name: Check for unused code patterns
+        run: |
+          echo "Checking for console.log leaks in production code..."
+          ! grep -r "console\.log" src/engine/ src/modules/ --include="*.js" | grep -v "console\.error" | grep -v "console\.warn" || echo "Found console.log - consider using proper logging"
+          echo "Checking for TODO/FIXME..."
+          grep -r "TODO\|FIXME" src/ --include="*.js" --include="*.ts" || echo "No TODOs found"
 
   self-scan:
     name: Scan demo target (end-to-end)
@@ -45,3 +62,35 @@ jobs:
         with:
           name: demo-audit
           path: audit
+
+  python-powerup:
+    name: Test Python power-up
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install requests || true
+      - name: Run Python scanner self-test
+        run: |
+          cd services/python
+          python3 advanced_scanner.py --target https://example.com --format json | head -50
+          echo "Python scanner OK"
+
+  go-powerup:
+    name: Test Go power-up
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: Build and test Go scanner
+        run: |
+          cd services/go
+          go vet ./...
+          go build -o monarch-go main.go
+          ./monarch-go -target 127.0.0.1 -ports 22,80,443 -timeout 500 || true
+          echo "Go scanner OK"

@@ -1,9 +1,9 @@
 {
   "name": "monarch-security-engine",
-  "version": "0.1.0",
-  "description": "Automated Web Vulnerability Scanner & Network Analyzer (AI-Powered)",
+  "version": "2.0.0",
+  "description": "Professional Web Vulnerability Scanner, Attack Surface Mapper & Network Defense Platform — AI-Powered",
   "type": "module",
-  "main": "src/index.js",
+  "main": "src/server.js",
   "bin": {
     "monarch": "src/cli.js"
   },
@@ -15,7 +15,14 @@
     "app": "npm run build && node src/server.js",
     "demo:target": "node demo/target.js",
     "scan": "node src/cli.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "test:watch": "node --test --watch test/*.test.js",
+    "lint": "echo 'No linter configured - using typecheck' && npm run typecheck",
+    "python:service": "python3 services/python/advanced_scanner.py --server --port 5001",
+    "go:service": "go run services/go/main.go -server -port 5002",
+    "services": "concurrently \"npm run python:service\" \"npm run go:service\" \"npm run dev\"",
+    "docker:build": "docker build -t monarch:local .",
+    "docker:run": "docker run -p 3000:3000 monarch:local"
   },
   "engines": {
     "node": ">=20"
