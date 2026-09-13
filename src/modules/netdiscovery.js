@@ -427,7 +427,12 @@ export function inferOsFromDevice(device) {
   return 'Unknown';
 }
 
-export function checkTcpPort(host, port, timeoutMs = 700) {
+export function checkTcpPort(hostInput, port, timeoutMs = 700) {
+  const host = String(hostInput || '').trim();
+  if (!host || !/^[a-zA-Z0-9.:_-]+$/.test(host)) {
+    return Promise.resolve({ port, proto: 'tcp', open: false, latencyMs: 0, service: TCP_SERVICES[port] || 'Custom', banner: null });
+  }
+
   return new Promise((resolve) => {
     const started = Date.now();
     const socket = new net.Socket();
@@ -472,7 +477,8 @@ export function checkTcpPort(host, port, timeoutMs = 700) {
       // Elicit banner on common protocols
       try {
         if ([80, 8080, 3000, 5000, 7000, 8000, 8006, 8081, 8443].includes(port)) {
-          socket.write('HEAD / HTTP/1.0\r\nHost: ' + host + '\r\n\r\n');
+          const safeHost = host.replace(/[\r\n]/g, '');
+          socket.write('HEAD / HTTP/1.0\r\nHost: ' + safeHost + '\r\n\r\n');
         } else {
           socket.write('\r\n');
         }
@@ -590,11 +596,10 @@ export async function resolveHostname(ip) {
  */
 export async function inspectHostDetails(hostInput) {
   const host = String(hostInput || '').trim();
-  if (!host) throw new Error('Host input is required');
+  if (!host || !/^[a-zA-Z0-9.:_-]+$/.test(host)) throw new Error('Invalid or unsafe host input');
 
   const started = Date.now();
   let resolvedIp = host;
-  let resolvedHost = host;
 
   if (/[a-z]/i.test(host)) {
     try {
@@ -603,6 +608,10 @@ export async function inspectHostDetails(hostInput) {
     } catch {
       /* continue with raw input */
     }
+  }
+
+  if (!net.isIP(resolvedIp)) {
+    throw new Error(`Host could not be resolved to a valid IP address: ${host}`);
   }
 
   const hostname = await resolveHostname(resolvedIp);
@@ -614,30 +623,32 @@ export async function inspectHostDetails(hostInput) {
   const httpPort = openPorts.find(p => [80, 443, 8000, 8080, 8443, 3000].includes(p.port));
   if (httpPort || /[a-z]/i.test(host)) {
     const scheme = (httpPort?.port === 443 || httpPort?.port === 8443) ? 'https' : 'http';
-    const targetUrl = `${scheme}://${resolvedIp}:${httpPort?.port || 80}`;
-    try {
-      await assertTargetAllowed(targetUrl);
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3000);
+    const parsedUrl = new URL(`${scheme}://${resolvedIp}:${httpPort?.port || 80}`);
+    if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
       try {
-        const res = await fetch(targetUrl, { method: 'HEAD', signal: controller.signal, redirect: 'manual' }).catch(async () => {
-          return await fetch(targetUrl, { method: 'GET', signal: controller.signal, redirect: 'manual' });
-        });
-        clearTimeout(timer);
-        const headers = {};
-        res.headers.forEach((v, k) => { headers[k] = v; });
-        webInfo = {
-          url: targetUrl,
-          status: res.status,
-          server: headers['server'] || headers['x-powered-by'] || null,
-          title: null,
-          headers,
-        };
+        await assertTargetAllowed(parsedUrl.href);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        try {
+          const res = await fetch(parsedUrl.href, { method: 'HEAD', signal: controller.signal, redirect: 'manual' }).catch(async () => {
+            return await fetch(parsedUrl.href, { method: 'GET', signal: controller.signal, redirect: 'manual' });
+          });
+          clearTimeout(timer);
+          const headers = {};
+          res.headers.forEach((v, k) => { headers[k] = v; });
+          webInfo = {
+            url: parsedUrl.href,
+            status: res.status,
+            server: headers['server'] || headers['x-powered-by'] || null,
+            title: null,
+            headers,
+          };
+        } catch {
+          clearTimeout(timer);
+        }
       } catch {
-        clearTimeout(timer);
+        /* target not allowed or invalid */
       }
-    } catch {
-      /* target not allowed or invalid */
     }
   }
 
