@@ -10,6 +10,10 @@ const ADMIN_PATHS = [
   { path: '/xmlrpc.php', name: 'WordPress XML-RPC API', category: 'WordPress' },
   { path: '/wp-json/wp/v2/users', name: 'WordPress User Enumeration API', category: 'WordPress' },
   { path: '/?author=1', name: 'WordPress Author 1 Enumeration', category: 'WordPress' },
+  { path: '/wp-config.php.bak', name: 'WordPress Backup Config', category: 'WordPress Leak' },
+  { path: '/wp-content/debug.log', name: 'WordPress Debug Log File', category: 'WordPress Leak' },
+  { path: '/readme.html', name: 'WordPress Core Readme', category: 'WordPress Info' },
+  { path: '/phpinfo.php', name: 'PHP Info Page', category: 'PHP Exposure' },
   { path: '/phpmyadmin/', name: 'phpMyAdmin Database Panel', category: 'PHP / Database' },
   { path: '/pma/', name: 'phpMyAdmin Short Path', category: 'PHP / Database' },
   { path: '/administrator/', name: 'Joomla Admin Console', category: 'Joomla' },
@@ -124,17 +128,17 @@ export async function checkWpAdminSecurity(targetUrl, { timeoutMs = 4000 } = {})
           url,
         });
 
-        // Flag phpMyAdmin as high severity
-        if (item.path.includes('phpmyadmin') || item.path.includes('/pma/')) {
+        // Flag phpMyAdmin or sensitive leaks as high severity
+        if (item.path.includes('phpmyadmin') || item.path.includes('/pma/') || item.path.includes('wp-config') || item.path.includes('debug.log') || item.path.includes('phpinfo')) {
           findings.push({
-            id: 'phpmyadmin-publicly-exposed',
+            id: 'sensitive-admin-file-exposed',
             category: 'wpadmin',
             severity: 'high',
-            title: 'phpMyAdmin database administration panel exposed to public internet',
+            title: `Sensitive admin resource "${item.name}" exposed publicly`,
             location: url,
-            description: 'phpMyAdmin panel is accessible without IP restrictions or VPN, exposing the underlying database to brute force and zero-day vulnerabilities.',
-            evidence: { status, url },
-            remediation: 'Restrict phpMyAdmin to internal VPN addresses or localhost; enable multi-factor authentication (MFA).',
+            description: `The file or panel at "${item.path}" is accessible publicly. It may leak database credentials, server paths, secret salts, or administrative access.`,
+            evidence: { status, url, item: item.name },
+            remediation: 'Remove or restrict public web access to this file immediately; disable phpinfo() in production.',
           });
         }
 

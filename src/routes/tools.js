@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { LoadTestRunner } from '../modules/loadtest.js';
-import { getLocalInterfaces, getArpTable, runNetworkDiscovery, scanHostPorts, getDefaultRoute } from '../modules/netdiscovery.js';
+import { getLocalInterfaces, getArpTable, runNetworkDiscovery, scanHostPorts, getDefaultRoute, inspectHostDetails } from '../modules/netdiscovery.js';
 import { pokeHttp, pokeSsh } from '../modules/poking.js';
 import { testDbConnection, runDbLoadTest } from '../modules/database.js';
 import { analyzeTLS, checkSecurityHeaders } from '../modules/tls.js';
@@ -149,6 +149,18 @@ router.post('/netdiscovery/scan-host', async (req, res) => {
   try {
     const openPorts = await scanHostPorts(host, tcpPorts, udpPorts, timeoutMs);
     res.json({ host, openPorts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/netdiscovery/inspect-host', async (req, res) => {
+  const { host } = req.body || {};
+  if (!host) return res.status(400).json({ error: 'host is required' });
+  if (typeof host !== 'string' || host.length > 256) return res.status(400).json({ error: 'Invalid host' });
+  try {
+    const details = await inspectHostDetails(host);
+    res.json(details);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

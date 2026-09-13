@@ -5,6 +5,7 @@ import dns from 'node:dns/promises';
 import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolveVendor, normalizeMac } from './oui.js';
+import { assertTargetAllowed } from '../engine/safety.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -426,7 +427,12 @@ export function inferOsFromDevice(device) {
   return 'Unknown';
 }
 
-export function checkTcpPort(host, port, timeoutMs = 700) {
+export function checkTcpPort(hostInput, port, timeoutMs = 700) {
+  const host = String(hostInput || '').trim();
+  if (!host || !/^[a-zA-Z0-9.:_-]+$/.test(host)) {
+    return Promise.resolve({ port, proto: 'tcp', open: false, latencyMs: 0, service: TCP_SERVICES[port] || 'Custom', banner: null });
+  }
+
   return new Promise((resolve) => {
     const started = Date.now();
     const socket = new net.Socket();
@@ -471,7 +477,8 @@ export function checkTcpPort(host, port, timeoutMs = 700) {
       // Elicit banner on common protocols
       try {
         if ([80, 8080, 3000, 5000, 7000, 8000, 8006, 8081, 8443].includes(port)) {
-          socket.write('HEAD / HTTP/1.0\r\nHost: ' + host + '\r\n\r\n');
+          const safeHost = host.replace(/[\r\n]/g, '');
+          socket.write('HEAD / HTTP/1.0\r\nHost: ' + safeHost + '\r\n\r\n');
         } else {
           socket.write('\r\n');
         }
@@ -581,6 +588,80 @@ export async function resolveHostname(ip) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Deep Host & Web Server / VPS Inspector
+ * Probes HTTP/HTTPS response headers, SSL cert, banners, OUI vendor, and reverse DNS.
+ */
+export async function inspectHostDetails(hostInput) {
+  const host = String(hostInput || '').trim();
+  if (!host || !/^[a-zA-Z0-9.:_-]+$/.test(host)) throw new Error('Invalid or unsafe host input');
+
+  const started = Date.now();
+  let resolvedIp = host;
+
+  if (/[a-z]/i.test(host)) {
+    try {
+      const lookup = await dns.lookup(host);
+      resolvedIp = lookup.address;
+    } catch {
+      /* continue with raw input */
+    }
+  }
+
+  if (!net.isIP(resolvedIp)) {
+    throw new Error(`Host could not be resolved to a valid IP address: ${host}`);
+  }
+
+  const hostname = await resolveHostname(resolvedIp);
+  const openPorts = await scanHostPorts(resolvedIp, FAST_TCP_PORTS, COMMON_UDP_PORTS.slice(0, 5), 800, 25);
+  const osHint = inferOsFromDevice({ vendor: '', openPorts });
+
+  // Web server & VPS details probe
+  let webInfo = null;
+  const httpPort = openPorts.find(p => [80, 443, 8000, 8080, 8443, 3000].includes(p.port));
+  if (httpPort || /[a-z]/i.test(host)) {
+    const scheme = (httpPort?.port === 443 || httpPort?.port === 8443) ? 'https' : 'http';
+    const parsedUrl = new URL(`${scheme}://${resolvedIp}:${httpPort?.port || 80}`);
+    if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+      try {
+        await assertTargetAllowed(parsedUrl.href);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        try {
+          const res = await fetch(parsedUrl.href, { method: 'HEAD', signal: controller.signal, redirect: 'manual' }).catch(async () => {
+            return await fetch(parsedUrl.href, { method: 'GET', signal: controller.signal, redirect: 'manual' });
+          });
+          clearTimeout(timer);
+          const headers = {};
+          res.headers.forEach((v, k) => { headers[k] = v; });
+          webInfo = {
+            url: parsedUrl.href,
+            status: res.status,
+            server: headers['server'] || headers['x-powered-by'] || null,
+            title: null,
+            headers,
+          };
+        } catch {
+          clearTimeout(timer);
+        }
+      } catch {
+        /* target not allowed or invalid */
+      }
+    }
+  }
+
+  return {
+    host,
+    ip: resolvedIp,
+    hostname,
+    osHint,
+    openPorts,
+    webInfo,
+    latencyMs: Date.now() - started,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 /**

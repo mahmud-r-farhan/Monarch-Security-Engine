@@ -8,6 +8,7 @@ export const DEFAULT_MODEL = {
   // (DeepSeek-R1 distills etc.) regularly exceed request timeouts while
   // emitting chain-of-thought — they are poor defaults for one-shot JSON.
   openrouter: 'openai/gpt-4o-mini',
+  'openai-compatible': 'gpt-4o-mini',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-latest',
   gemini: 'gemini-1.5-flash',
@@ -16,7 +17,7 @@ export const DEFAULT_MODEL = {
 };
 
 /** Valid provider ids — shared by server config endpoint and callers. */
-export const PROVIDERS = ['openrouter', 'openai', 'anthropic', 'gemini', 'ollama', 'none'];
+export const PROVIDERS = ['openrouter', 'openai-compatible', 'openai', 'anthropic', 'gemini', 'ollama', 'none'];
 
 /**
  * Which env vars configure each provider.
@@ -24,6 +25,7 @@ export const PROVIDERS = ['openrouter', 'openai', 'anthropic', 'gemini', 'ollama
  */
 export const PROVIDER_ENV = {
   openrouter: { key: 'OPENROUTER_API_KEY', model: 'OPENROUTER_MODEL' },
+  'openai-compatible': { key: 'OPENAI_COMPATIBLE_API_KEY', url: 'OPENAI_COMPATIBLE_BASE_URL', model: 'OPENAI_COMPATIBLE_MODEL' },
   openai: { key: 'OPENAI_API_KEY', model: 'OPENAI_MODEL' },
   anthropic: { key: 'ANTHROPIC_API_KEY', model: 'ANTHROPIC_MODEL' },
   gemini: { key: 'GEMINI_API_KEY', model: 'GEMINI_MODEL' },
@@ -34,14 +36,15 @@ export const PROVIDER_ENV = {
 export const SUGGESTED_MODELS = {
   openrouter: [
     'openai/gpt-4o-mini',
-    'openai/gpt-4.1-mini',
-    'google/gemini-2.0-flash-001',
-    'anthropic/claude-3.5-haiku',
-    'meta-llama/llama-3.3-70b-instruct',
     'meta-llama/llama-3.3-70b-instruct:free',
     'deepseek/deepseek-chat-v3-0324:free',
+    'google/gemini-2.0-flash-exp:free',
     'mistralai/mistral-nemo:free',
+    'qwen/qwen-2.5-coder-32b-instruct:free',
+    'anthropic/claude-3.5-haiku',
+    'meta-llama/llama-3.3-70b-instruct',
   ],
+  'openai-compatible': ['gpt-4o-mini', 'gpt-4o', 'qwen2.5-coder-32b-instruct', 'deepseek-chat', 'llama-3.3-70b-instruct'],
   openai: ['gpt-4o-mini', 'gpt-4.1-mini', 'gpt-4o', 'gpt-4.1', 'o4-mini'],
   anthropic: ['claude-3-5-haiku-latest', 'claude-3-5-sonnet-latest', 'claude-sonnet-4-20250514', 'claude-opus-4-20250514'],
   gemini: ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash', 'gemini-2.5-flash'],
@@ -52,6 +55,7 @@ export const SUGGESTED_MODELS = {
 /** UI display metadata for the config endpoint / modal. */
 export const PROVIDER_INFO = [
   { id: 'openrouter', name: 'OpenRouter (Default / Multi-Model)', defaultModel: DEFAULT_MODEL.openrouter, models: SUGGESTED_MODELS.openrouter },
+  { id: 'openai-compatible', name: 'OpenAI-Compatible (Custom Endpoint)', defaultModel: DEFAULT_MODEL['openai-compatible'], models: SUGGESTED_MODELS['openai-compatible'] },
   { id: 'openai', name: 'OpenAI (GPT-4o, GPT-4o-mini)', defaultModel: DEFAULT_MODEL.openai, models: SUGGESTED_MODELS.openai },
   { id: 'anthropic', name: 'Anthropic (Claude 3.5 Sonnet / Haiku)', defaultModel: DEFAULT_MODEL.anthropic, models: SUGGESTED_MODELS.anthropic },
   { id: 'gemini', name: 'Google Gemini (Gemini 1.5 Flash)', defaultModel: DEFAULT_MODEL.gemini, models: SUGGESTED_MODELS.gemini },
@@ -70,6 +74,7 @@ export function detectProvider(env = process.env) {
   const forced = (env.AI_PROVIDER || '').toLowerCase();
   if (forced && forced !== 'auto') return forced;
   if (env.OPENROUTER_API_KEY) return 'openrouter';
+  if (env.OPENAI_COMPATIBLE_API_KEY || env.OPENAI_COMPATIBLE_BASE_URL) return 'openai-compatible';
   if (env.ANTHROPIC_API_KEY) return 'anthropic';
   if (env.OPENAI_API_KEY) return 'openai';
   if (env.GEMINI_API_KEY) return 'gemini';
@@ -130,8 +135,15 @@ export function resolveProviderConfig(aiConfig = null, env = process.env) {
     || DEFAULT_MODEL[provider]
     || '';
   const apiKey = provider === 'none' ? '' : effective[PROVIDER_ENV[provider]?.key || ''] || effective.AI_API_KEY || '';
+  let rawBaseUrl = effective.OPENAI_COMPATIBLE_BASE_URL || effective.OPENAI_BASE_URL || effective.AI_BASE_URL || 'https://api.openai.com/v1';
+  while (typeof rawBaseUrl === 'string' && rawBaseUrl.endsWith('/')) {
+    rawBaseUrl = rawBaseUrl.slice(0, -1);
+  }
+
   const baseUrl = provider === 'ollama'
     ? normalizeOllamaBaseUrl(effective.OLLAMA_BASE_URL || effective.OLLAMA_HOST || '')
+    : provider === 'openai-compatible'
+    ? rawBaseUrl
     : null;
 
   const timeoutMs = clampTimeoutMs(effective.AI_TIMEOUT_MS);
