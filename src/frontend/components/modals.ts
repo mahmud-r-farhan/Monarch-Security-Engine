@@ -37,8 +37,6 @@ export function setupModals() {
     state.aiConfig = { provider, apiKey, model };
     sessionStorage.setItem('monarch_provider', provider);
     sessionStorage.setItem('monarch_model', model);
-    if (apiKey) sessionStorage.setItem('monarch_ai_key', apiKey);
-    else sessionStorage.removeItem('monarch_ai_key');
 
     await fetch('/api/config', {
       method: 'POST',
@@ -53,7 +51,6 @@ export function setupModals() {
 
   $('ai-clear-btn').addEventListener('click', async () => {
     state.aiConfig = { provider: 'none', apiKey: '', model: 'monarch-rules-v1' };
-    sessionStorage.removeItem('monarch_ai_key');
     sessionStorage.setItem('monarch_provider', 'none');
     ( $('ai-provider-select') as HTMLSelectElement).value = 'none';
     ( $('ai-key-input') as HTMLInputElement).value = '';

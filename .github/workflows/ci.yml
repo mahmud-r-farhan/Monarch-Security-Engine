@@ -19,7 +19,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - name: Install Dependencies
-        run: npm ci --omit=optional
+        run: npm ci
       - name: TypeScript Type Check
         run: npm run typecheck
       - name: Build Web Frontend Application
@@ -37,7 +37,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install Dependencies
-        run: npm ci --omit=optional
+        run: npm ci
       - name: Check for unused code patterns & console leaks
         run: |
           echo "Checking for console.log leaks in core engine code..."
@@ -56,7 +56,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Install Dependencies
-        run: npm ci --omit=optional
+        run: npm ci
       - name: Start vulnerable demo target
         run: (npm run demo:target &) && sleep 2
       - name: Run Monarch scanner CLI against demo target

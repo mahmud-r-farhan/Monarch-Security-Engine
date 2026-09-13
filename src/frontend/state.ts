@@ -11,7 +11,7 @@ export const state: AppState = {
   gateway: null,
   aiConfig: {
     provider: (sessionStorage.getItem('monarch_provider') as any) || 'openrouter',
-    apiKey: sessionStorage.getItem('monarch_ai_key') || '',
+    apiKey: '',
     model: sessionStorage.getItem('monarch_model') || 'deepseek/deepseek-r1-distill-qwen-7b',
   },
   filters: {
