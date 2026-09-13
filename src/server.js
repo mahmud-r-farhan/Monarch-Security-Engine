@@ -688,7 +688,7 @@ app.post('/api/recon/robots', async (req, res) => {
 /* Frontend fallback (SPA)                                            */
 /* ------------------------------------------------------------------ */
 
-app.get('*', (req, res) => {
+app.get('*', apiLimiter, (req, res) => {
   // If API route not matched, serve index.html for SPA routing
   if (req.path.startsWith('/api/')) {
     return res.status(404).json({ error: 'API endpoint not found' });
