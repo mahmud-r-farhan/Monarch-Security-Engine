@@ -29,7 +29,7 @@ export async function analyzeTLS(target, { timeoutMs = 8000 } = {}) {
         host: hostname,
         port,
         servername: hostname,
-        rejectUnauthorized: false,
+        rejectUnauthorized: true,
         timeout: timeoutMs,
       },
       () => {
