@@ -1,4 +1,4 @@
-# Monarch Security Engine v2 — Usage Guide
+# Monarch Security Engine v2.1 — Usage Guide
 
 ## Quick Start
 
@@ -54,11 +54,11 @@ npm start
 #### SEO & AIO
 - Title, meta description, canonical, heading hierarchy, OpenGraph, JSON-LD, image alt audit
 
-#### TLS & Headers (NEW v2)
+#### TLS & Headers (v2)
 - **TLS Analyzer**: Paste `example.com` → certificate chain, expiry days, protocol (TLS 1.2/1.3), cipher, grade A-F, findings
 - **Security Headers**: Paste `https://example.com` → checks HSTS, CSP, X-Frame-Options, etc., grade & score
 
-#### Recon (NEW v2)
+#### Recon (v2)
 - **Subdomains**: Enter `example.com` → CT logs (crt.sh) + common subdomain DNS brute-force
 - **Sitemap/Robots**: Enter `https://example.com` → parse sitemap.xml URLs, analyze robots.txt disallows for sensitive paths
 
@@ -69,7 +69,29 @@ npm start
 
 #### Monitor
 - Add URL, interval (15s-5m), expected status, keyword
+- **Notifications (NEW v2.1)**: choose when to be alerted per monitor:
+  - **All events** — every DOWN / SLOW / recovery check
+  - **Only status changes** — alert only when the site state flips
+  - **Only when down** — alert on outages
+  - **Never** — silent monitoring
 - Live sparkline, uptime %, WebSocket push
+- **Pause/Resume (NEW v2.1)**: use the ⏸️/▶️ button to suspend a monitor without deleting it
+
+#### Page Speed (NEW v2.1)
+- Enter a URL and run 1-3 timed requests
+- **Connection waterfall**: DNS lookup → TCP connect → TLS handshake → server TTFB → content download, with color-coded bars
+- **Metrics**: TTFB, total load, page size, compression (gzip/brotli), HTTP protocol version, status code
+- **Audits**: missing compression, no Cache-Control, render-blocking CSS, synchronous head scripts, oversized inline JS, images missing lazy-loading or dimensions, legacy image formats, HTTP/1.1
+- **Score**: weighted 0-100 with A-F grade (TTFB 35%, total 25%, size 25%, audits 15%)
+- **Advice**: prioritized fix suggestions (CDN, compression, HTTP/2, streaming, …)
+
+#### Notification Center (NEW v2.1)
+- **🔔 Bell icon** in the topbar shows an unread badge
+- Dropdown lists the latest alerts with severity icons (🔴 down, 🟠 slow, 🟢 live/recovered) and relative timestamps
+- Clicking an alert marks it read and jumps to the Monitor view
+- **Mark all read** / **Clear** actions in the dropdown header
+- Toasts pop immediately for live feedback; native browser notifications fire if permission is granted
+- Alerts persist for 7 days (max 250) and survive server restarts
 
 #### Load Test
 - Set URL, method, concurrency (1-100), total (5-2000)
@@ -131,9 +153,40 @@ curl -X POST http://localhost:3000/api/tls/analyze -H "content-type: application
 # Subdomain enum
 curl -X POST http://localhost:3000/api/recon/subdomains -H "content-type: application/json" -d '{"domain":"example.com"}'
 
-# Prometheus metrics
+# Page speed analysis (NEW v2.1)
+curl -X POST http://localhost:3000/api/speed/analyze -H "content-type: application/json" -d '{"target":"https://example.com","runs":2}'
+
+# Quick live/down probe (NEW v2.1)
+curl -X POST http://localhost:3000/api/speed/status -H "content-type: application/json" -d '{"target":"https://example.com"}'
+
+# Create a monitor with notification preference (NEW v2.1)
+curl -X POST http://localhost:3000/api/monitors -H "content-type: application/json" \
+  -d '{"name":"Prod API","url":"https://api.example.com/health","intervalSeconds":60,"notifyOn":"down"}'
+
+# List notifications / unread count (NEW v2.1)
+curl "http://localhost:3000/api/notifications?limit=20"
+curl http://localhost:3000/api/notifications/unread-count
+
+# Mark one / all read, clear all (NEW v2.1)
+curl -X POST http://localhost:3000/api/notifications/<id>/read
+curl -X POST http://localhost:3000/api/notifications/read-all
+curl -X DELETE http://localhost:3000/api/notifications
+
+# Pause / resume a monitor (NEW v2.1)
+curl -X POST http://localhost:3000/api/monitors/<id>/toggle
+
+# Prometheus metrics (includes unread notification gauge)
 curl http://localhost:3000/api/metrics
 ```
+
+### WebSocket channels
+
+Subscribe to `ws://localhost:3000/ws` and send `{"action":"subscribe","channel":"all"}`:
+
+| Channel | Payload | Description |
+|---|---|---|
+| `monitor_update` | monitor object | Emitted on every check |
+| `notification` (NEW v2.1) | notification object | Monitor DOWN/SLOW/LIVE alerts |
 
 ## Power-Ups
 
@@ -158,6 +211,8 @@ curl http://localhost:3000/api/health
 - **Rate limited**: Wait 1 min (scan limiter 10/min)
 - **No findings**: Check if target is reachable, try fetch engine first
 - **AI not working**: Check key in UI config, or use offline mode
+- **No notifications arriving** (NEW v2.1): ensure the monitor is active (not paused), the notification preference is not "Never", and the WS indicator shows connected — check `monarch_notifications_unread` in `/api/metrics`
+- **Browser notifications not showing**: allow notifications for the site in your browser settings; the app asks permission on first click
 
 ## Security Best Practices
 
@@ -165,5 +220,6 @@ curl http://localhost:3000/api/health
 - Use offline heuristic for sensitive internal apps (no data leaves)
 - API keys stored in sessionStorage only (cleared on tab close)
 - Reports stored in `reports/` — clean periodically or set `SCAN_TTL_HOURS`
+- Monitor URLs and status history are stored in `reports/monitors.json`; notification history in `reports/notifications.json` — treat both as sensitive (they reveal internal hostnames)
 - Run behind reverse proxy with TLS in production
 - Set `ALLOW_PRIVATE_TARGETS=false` for public deployments

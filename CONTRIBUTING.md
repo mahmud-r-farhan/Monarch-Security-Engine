@@ -13,13 +13,28 @@ Thanks for helping make Monarch better!
 3. Add a unit test in `test/` (see `test/checks.test.js` for fixtures).
 4. If the check needs new crawl data, extend both crawler engines in `src/engine/crawler.js` so their output shape stays identical.
 
+## Architecture (v2.1)
+The backend is deliberately modular — keep it that way:
+- `src/server.js` is a **slim orchestrator** only: security headers, CORS, static serving, health/config endpoints. Do not add feature routes there.
+- Feature routes live in `src/routes/` (`scans.js`, `monitors.js`, `tools.js`) as Express routers mounted under `/api`.
+- Shared scan state belongs in `src/scanRegistry.js` (in-memory registry + disk persistence + TTL cleanup).
+- Background services live in `src/modules/` (`monitor.js`, `notifications.js`, `speed.js`, …) and are wired to WebSocket broadcast in `server.js`.
+- Emitting user-facing events: use `notificationService.notify()` so alerts appear in the notification center and over the `notification` WS channel.
+- Frontend: one file per tab in `src/frontend/components/`, shared state in `src/frontend/state.ts`, types in `types.ts`.
+
 ## Running locally
 ```bash
 npm install
 npm run demo:target   # terminal 1
 npm start             # terminal 2 → http://localhost:3000
 npm test
+npm run typecheck
 ```
+
+## Before you open a PR
+- `npm test` and `npm run typecheck` must pass (33+ tests).
+- New endpoints must be added to the `/api/docs` list in `server.js` and documented in `README.md` + `docs/USAGE_GUIDE.md`.
+- New background behavior (monitors, notifications, speed) needs a unit test in `test/`.
 
 ## Reporting security issues in Monarch itself
 Please email the maintainer privately rather than opening a public issue.
