@@ -432,7 +432,10 @@ app.get('/api/scans/:id/report.:fmt', async (req, res) => {
 app.delete('/api/scans/:id', async (req, res) => {
   if (!/^[0-9a-f-]{36}$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid scan ID' });
   scans.delete(req.params.id);
-  await fs.unlink(path.join(REPORT_DIR, `${req.params.id}.json`)).catch(() => {});
+  const reportPath = path.resolve(REPORT_DIR, `${req.params.id}.json`);
+  const reportRoot = path.resolve(REPORT_DIR) + path.sep;
+  if (!reportPath.startsWith(reportRoot)) return res.status(400).json({ error: 'Invalid scan ID' });
+  await fs.unlink(reportPath).catch(() => {});
   res.status(204).end();
 });
 
