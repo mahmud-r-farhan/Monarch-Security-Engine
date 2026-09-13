@@ -1,5 +1,3 @@
-<div align="center">
-
 # 🦋 Monarch Security Engine v2
 
 ### Professional Web Vulnerability Scanner, Attack Surface Mapper & Network Defense Platform
@@ -16,8 +14,12 @@
 
 </div>
 
+
+
+
 ---
 
+[![image.png](https://i.postimg.cc/jjxtb6d3/image.png)](https://postimg.cc/k2pkNbSW)
 > ⚠️ **Defensive Only** — Monarch is for **educational use, defensive research, and auditing systems you own or are explicitly authorised to test**. Scanning third-party targets without permission is illegal. Passive by design, but you remain responsible for where you point it.
 
 ---
