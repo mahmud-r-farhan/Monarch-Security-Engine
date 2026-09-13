@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateInsights, heuristicInsights, detectProvider, parseModelJson, normalizeOllamaBaseUrl } from '../src/ai/insights.js';
-import { resolveProviderConfig, DEFAULT_MODEL, PROVIDERS, PROVIDER_INFO } from '../src/ai/registry.js';
+import { resolveProviderConfig, DEFAULT_MODEL, PROVIDERS, PROVIDER_INFO, clampTimeoutMs } from '../src/ai/registry.js';
 import { checkProvider, checkAllProviders, resetAiHealthCache } from '../src/ai/health.js';
 import { providers } from '../src/ai/providers/index.js';
 import { buildPrompt, SYSTEM } from '../src/ai/prompt.js';
+import { mergeAiConfig } from '../src/routes/scans.js';
 
 test('AI facade re-exports stay importable from ai/insights.js', () => {
   assert.equal(typeof generateInsights, 'function');
@@ -135,3 +136,175 @@ function minimalScan() {
     networkSummary: { requests: 1 },
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Regression tests for the OpenRouter timeout / abort failure          */
+/* ------------------------------------------------------------------ */
+
+test('default OpenRouter model is a fast non-reasoning model', () => {
+  assert.equal(DEFAULT_MODEL.openrouter, 'openai/gpt-4o-mini');
+  // The old default was a reasoning model that routinely missed the 60s deadline
+  assert.ok(!/r1|reasoning|qwq|o1/i.test(DEFAULT_MODEL.openrouter));
+});
+
+function abortingFetch() {
+  return async () => {
+    const err = new Error('This operation was aborted');
+    err.name = 'AbortError';
+    throw err;
+  };
+}
+
+test('an aborted request yields a friendly timeout warning and hint (not "This operation was aborted")', async () => {
+  const out = await generateInsights(minimalScan(), {
+    env: {},
+    aiConfig: { provider: 'openrouter', apiKey: 'sk-or-test', model: 'openai/gpt-4o-mini' },
+    fetchImpl: abortingFetch(),
+  });
+  assert.equal(out.provider, 'heuristic');
+  assert.match(out.warning, /openrouter.*failed/i);
+  assert.match(out.warning, /timed out/i);
+  assert.doesNotMatch(out.warning, /This operation was aborted/i);
+  assert.match(out.hint, /too slow|AI_TIMEOUT_MS/i);
+});
+
+test('the timeout is user-configurable and clamped to 30s–600s', () => {
+  assert.equal(clampTimeoutMs(95_000), 95_000);
+  assert.equal(clampTimeoutMs(1_000), 30_000);
+  assert.equal(clampTimeoutMs(999_999_999), 600_000);
+  assert.equal(clampTimeoutMs('nonsense'), 120_000);
+  const cfg = resolveProviderConfig({ provider: 'openrouter', apiKey: 'k', timeoutMs: 95_000 }, {});
+  assert.equal(cfg.timeoutMs, 95_000);
+});
+
+test('transient server errors are retried and recover', async () => {
+  let calls = 0;
+  const fetchImpl = async (url, opts) => {
+    calls++;
+    if (calls === 1) return { ok: false, status: 500, text: async () => 'upstream overloaded', json: async () => ({}) };
+    return {
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ riskLevel: 'low', executiveSummary: 'ok', rootCauses: [], actionPlan: [], quickWins: [], attackNarrative: '' }) } }] }),
+    };
+  };
+  const out = await generateInsights(minimalScan(), {
+    env: {},
+    aiConfig: { provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-4o-mini' },
+    fetchImpl,
+  });
+  assert.equal(out.provider, 'openrouter');
+  assert.equal(out.riskLevel, 'low');
+  assert.equal(calls, 2);
+});
+
+test('auth errors fail fast (no retry) and keep the actionable hint', async () => {
+  let calls = 0;
+  const fetchImpl = async () => { calls++; return { ok: false, status: 401, text: async () => 'No auth credentials', json: async () => ({}) }; };
+  const out = await generateInsights(minimalScan(), {
+    env: {},
+    aiConfig: { provider: 'openrouter', apiKey: 'bad', model: 'openai/gpt-4o-mini' },
+    fetchImpl,
+  });
+  assert.equal(out.provider, 'heuristic');
+  assert.equal(calls, 1);
+  assert.match(out.hint, /key/i);
+});
+
+test('models that reject JSON mode are retried without response_format', async () => {
+  const bodies = [];
+  const fetchImpl = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    if (bodies.length === 1) {
+      return { ok: false, status: 400, text: async () => JSON.stringify({ error: { message: 'response_format is not supported by this model' } }), json: async () => ({}) };
+    }
+    return {
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ riskLevel: 'low', executiveSummary: 'ok', rootCauses: [], actionPlan: [], quickWins: [], attackNarrative: '' }) } }] }),
+    };
+  };
+  const out = await generateInsights(minimalScan(), {
+    env: {},
+    aiConfig: { provider: 'openrouter', apiKey: 'k', model: 'some/free-model' },
+    fetchImpl,
+  });
+  assert.equal(out.provider, 'openrouter');
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].response_format.type, 'json_object');
+  assert.equal(bodies[1].response_format, undefined);
+});
+
+test('reasoning-model <think> blocks are stripped before JSON parsing', () => {
+  assert.equal(parseModelJson('<think>let me reason about this...</think>{"a":1}').a, 1);
+  assert.equal(parseModelJson('Sure! ```json\n{"b":2}\n```').b, 2);
+  assert.equal(parseModelJson('{"riskLevel":"low"}').riskLevel, 'low');
+});
+
+test('chat requests carry a max_tokens cap so slow models cannot run away', async () => {
+  const bodies = [];
+  const fetchImpl = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return {
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({ riskLevel: 'low', executiveSummary: 'ok', rootCauses: [], actionPlan: [], quickWins: [], attackNarrative: '' }) } }] }),
+    };
+  };
+  await generateInsights(minimalScan(), {
+    env: {},
+    aiConfig: { provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-4o-mini' },
+    fetchImpl,
+  });
+  assert.ok(bodies[0].max_tokens >= 1000 && bodies[0].max_tokens <= 8000);
+});
+
+test('deep health check validates the key AND runs a real model completion', async () => {
+  resetAiHealthCache();
+  const calls = [];
+  const fetchImpl = async (url, opts = {}) => {
+    calls.push({ url: String(url), method: opts.method || 'GET', body: opts.body ? JSON.parse(opts.body) : null });
+    if (opts.method === 'POST') {
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"ok":true}' } }] }),
+      };
+    }
+    return {
+      ok: true,
+      json: async () => ({ data: [{ id: 'openai/gpt-4o-mini' }, { id: 'meta-llama/llama-3.3-70b-instruct' }] }),
+    };
+  };
+  const ok = await checkProvider('openrouter', {
+    fresh: true,
+    deep: true,
+    aiConfig: { provider: 'openrouter', apiKey: 'k', model: 'openai/gpt-4o-mini' },
+    fetchImpl,
+  });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.chat.ok, true);
+  assert.match(ok.detail, /responded/);
+  assert.equal(calls.filter(c => c.method === 'POST').length, 1);
+
+  // An unknown model id is caught during the catalog check — before wasting a chat call
+  const bad = await checkProvider('openrouter', {
+    fresh: true,
+    aiConfig: { provider: 'openrouter', apiKey: 'k', model: 'nope/does-not-exist' },
+    fetchImpl,
+  });
+  assert.equal(bad.ok, false);
+  assert.match(bad.hint, /not in openrouter's catalog|exact id/i);
+});
+
+test('an empty client-side API key does not shadow the server-saved one', () => {
+  const saved = { provider: 'openrouter', apiKey: 'sk-or-saved', model: 'openai/gpt-4o-mini', timeoutMs: 120000 };
+  // What the browser sends after a refresh: provider+model from sessionStorage, no key
+  const client = { provider: 'openrouter', apiKey: '', model: 'openai/gpt-4o-mini' };
+  const merged = mergeAiConfig(saved, client);
+  assert.equal(merged.apiKey, 'sk-or-saved');
+  assert.equal(merged.provider, 'openrouter');
+
+  // A fresh client key wins over the saved one
+  const merged2 = mergeAiConfig(saved, { apiKey: 'sk-or-new' });
+  assert.equal(merged2.apiKey, 'sk-or-new');
+
+  // No saved config, empty client → null
+  assert.equal(mergeAiConfig(null, { apiKey: '' }), null);
+});

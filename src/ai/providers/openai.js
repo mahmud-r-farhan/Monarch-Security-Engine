@@ -4,13 +4,14 @@ import { openAiChat } from './openaiCompatible.js';
 export const openai = {
   id: 'openai',
 
-  async chat({ apiKey, model, system, prompt, fetchImpl }) {
+  async chat({ apiKey, model, system, prompt, fetchImpl, timeoutMs }) {
     return openAiChat({
       baseUrl: 'https://api.openai.com/v1',
       apiKey,
       model,
       system,
       prompt,
+      timeoutMs,
       fetchImpl,
     });
   },

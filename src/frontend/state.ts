@@ -12,7 +12,8 @@ export const state: AppState = {
   aiConfig: {
     provider: (sessionStorage.getItem('monarch_provider') as any) || 'openrouter',
     apiKey: '',
-    model: sessionStorage.getItem('monarch_model') || 'deepseek/deepseek-r1-distill-qwen-7b',
+    model: sessionStorage.getItem('monarch_model') || 'openai/gpt-4o-mini',
+    timeoutMs: Number(sessionStorage.getItem('monarch_timeout')) || 120000,
   },
   filters: {
     findingText: '',

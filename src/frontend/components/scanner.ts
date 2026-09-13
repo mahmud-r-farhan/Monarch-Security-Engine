@@ -171,8 +171,18 @@ export function renderAiInsights(insights: any) {
     actionPlanHtml += '<div class="plan-item"><div class="plan-head"><span class="plan-prio">Priority #' + item.priority + '</span><span class="sev ' + (item.effort==='low'?'low':'medium') + '">' + escapeHtml(item.effort) + ' effort</span></div><div class="plan-title">' + escapeHtml(item.title) + '</div><div class="plan-why">' + escapeHtml(item.why) + '</div><div class="codeblock">' + escapeHtml(item.how) + '</div></div>';
   }
   const attack = insights.attackNarrative ? '<div class="ai-narrative"><b>⚠️ Attack Chain:</b> ' + escapeHtml(insights.attackNarrative) + '</div>' : '';
-  const warning = insights.warning ? '<div style="margin-top:10px;padding:8px 12px;background:var(--warning-soft);border:1px solid rgba(255,176,46,0.25);border-radius:8px;font-size:12px;color:var(--warning);">' + escapeHtml(insights.warning) + '</div>' : '';
-  c.innerHTML = '<div class="ai-card"><div class="ai-badge">🤖 ' + escapeHtml(insights.provider) + ' • ' + escapeHtml(insights.model) + '</div><div class="ai-summary">' + escapeHtml(insights.executiveSummary||'') + '</div>' + attack + warning + '</div><div class="box"><h3 style="margin-bottom:12px;">Prioritized Action Plan</h3>' + actionPlanHtml + '</div>';
+  const risk = insights.riskLevel ? '<span class="risk-pill risk-' + escapeHtml(insights.riskLevel) + '">Risk: ' + escapeHtml(insights.riskLevel) + '</span>' : '';
+  const warning = insights.warning
+    ? '<div class="ai-warn-card"><div class="ai-warn-head">🤖⚠️ ' + escapeHtml(insights.warning) + '</div>'
+      + (insights.hint ? '<div class="ai-warn-hint">💡 ' + escapeHtml(insights.hint) + '</div>' : '')
+      + '<div class="ai-warn-actions"><button type="button" class="btn btn-ghost ai-warn-btn" data-act="settings">⚙️ AI Settings</button></div></div>'
+    : '';
+  c.innerHTML = '<div class="ai-card"><div class="ai-badge">🤖 ' + escapeHtml(insights.provider) + ' • ' + escapeHtml(insights.model) + '</div>' + risk + '<div class="ai-summary">' + escapeHtml(insights.executiveSummary||'') + '</div>' + attack + warning + '</div><div class="box"><h3 style="margin-bottom:12px;">Prioritized Action Plan</h3>' + actionPlanHtml + '</div>';
+  const settingsBtn = c.querySelector('[data-act="settings"]');
+  if (settingsBtn) settingsBtn.addEventListener('click', () => {
+    const btn = $('ai-config-btn');
+    if (btn) (btn as HTMLButtonElement).click();
+  });
 }
 
 export function appendNetworkRow(entry: any, index: number) {

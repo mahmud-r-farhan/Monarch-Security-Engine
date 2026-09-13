@@ -34,7 +34,7 @@
 
   <div class="top-actions">
     <button id="ai-config-btn" class="btn btn-ghost" title="AI Configuration">
-      <span class="dot" style="background: var(--primary);"></span>
+      <span class="dot" id="ai-dot"></span>
       <span id="ai-config-label">AI: OpenRouter</span>
     </button>
     <div class="notif-wrap">
@@ -391,9 +391,38 @@
       <p class="modal-desc">Monarch runs 100% offline with heuristic rules. Configure OpenRouter (recommended), OpenAI, Anthropic, or Gemini for AI-powered remediation. Keys are stored in session only.</p>
       <form id="ai-config-form" style="display:flex;flex-direction:column;gap:14px;">
         <div class="form-group"><label>Provider</label><select id="ai-provider-select" class="select"><option value="openrouter">OpenRouter (Multi-Model)</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option><option value="ollama">Ollama (Local / Self-hosted)</option><option value="none">Offline Heuristic</option></select></div>
+        <div id="ai-provider-hint" class="provider-hint"></div>
+        <div id="ai-provider-status" class="provider-status hidden"></div>
         <div class="form-group" id="ai-url-group" style="display:none;"><label>Ollama Server URL</label><input id="ai-url-input" placeholder="http://localhost:11434" spellcheck="false"><div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">No API key needed — point at your local or remote Ollama server. Default: http://localhost:11434</div></div>
-        <div class="form-group" id="ai-key-group"><label>API Key</label><input id="ai-key-input" type="password" placeholder="sk-or-v1-..." autocomplete="off"></div>
-        <div class="form-group" id="ai-model-group"><label>Model</label><input id="ai-model-input" value="deepseek/deepseek-r1-distill-qwen-7b" placeholder="model name"></div>
+        <div class="form-group" id="ai-key-group">
+          <label>API Key</label>
+          <div class="key-wrap">
+            <input id="ai-key-input" type="password" placeholder="sk-or-v1-..." autocomplete="off" spellcheck="false">
+            <button type="button" id="ai-key-toggle" class="key-toggle" title="Show / hide key">👁</button>
+          </div>
+          <div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">Kept in this browser session only — never persisted to disk.</div>
+        </div>
+        <div class="form-group" id="ai-model-group">
+          <label>Model</label>
+          <div class="key-wrap">
+            <input id="ai-model-input" value="openai/gpt-4o-mini" placeholder="provider/model-name" spellcheck="false" list="ai-model-list">
+            <button type="button" id="ai-models-load" class="key-toggle" title="Load live model list from the provider">⟳</button>
+          </div>
+          <datalist id="ai-model-list"></datalist>
+          <div id="ai-model-hint" style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">Fast, non-reasoning models give the most reliable results — reasoning models (deepseek-r1-*, o1, …) can exceed the request timeout.</div>
+        </div>
+        <details class="adv">
+          <summary>Advanced</summary>
+          <div class="form-group" style="margin-top:10px;"><label>AI response timeout</label>
+            <select id="ai-timeout-select" class="select">
+              <option value="60000">60 seconds</option>
+              <option value="120000" selected>120 seconds (recommended)</option>
+              <option value="180000">3 minutes</option>
+              <option value="300000">5 minutes</option>
+            </select>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">How long to wait for the model before falling back to rules-based analysis.</div>
+          </div>
+        </details>
         <div id="ai-health-result" class="ai-health-result hidden"></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="ai-test-btn">🔌 Test Connection</button><button type="button" class="btn btn-ghost" id="ai-clear-btn">Use Offline</button><button type="submit" class="btn btn-primary">Save</button></div>
       </form>

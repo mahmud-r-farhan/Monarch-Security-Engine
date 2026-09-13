@@ -16,6 +16,22 @@ function clamp(n, lo, hi) {
   return n == null ? undefined : Math.min(hi, Math.max(lo, n));
 }
 
+/**
+ * Merge the client-supplied AI config with the server-saved runtime config.
+ * The client's sessionStorage deliberately never stores the API key, so after
+ * a page refresh it posts apiKey:"" — that empty value must NOT shadow the
+ * key saved via /api/config. Non-empty client values win; empty ones fall
+ * back to the saved config.
+ */
+export function mergeAiConfig(saved, client) {
+  const out = { ...(saved || {}) };
+  for (const k of ['provider', 'apiKey', 'model', 'baseUrl', 'timeoutMs']) {
+    const v = client?.[k];
+    if (v !== undefined && v !== null && String(v).trim() !== '') out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 router.post('/scans', scanLimiter, async (req, res) => {
   const { target, maxPages, engine, ai, aiConfig } = req.body || {};
   if (!target) return res.status(400).json({ error: 'target is required' });
@@ -44,7 +60,7 @@ router.post('/scans', scanLimiter, async (req, res) => {
     maxPages: clamp(Number(maxPages) || undefined, 1, 200),
     engine: engine === 'playwright' ? 'playwright' : engine === 'fetch' ? 'fetch' : undefined,
     ai: ai !== false,
-    aiConfig: aiConfig || req.app.locals.runtimeAiConfig,
+    aiConfig: mergeAiConfig(req.app.locals.runtimeAiConfig, aiConfig),
     onEvent,
   })
     .then(async scan => {

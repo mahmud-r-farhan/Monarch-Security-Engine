@@ -9,7 +9,7 @@ import { normalizeOllamaBaseUrl } from '../registry.js';
 export const ollama = {
   id: 'ollama',
 
-  async chat({ baseUrl, model, system, prompt, fetchImpl }) {
+  async chat({ baseUrl, model, system, prompt, fetchImpl, timeoutMs }) {
     const base = normalizeOllamaBaseUrl(baseUrl);
     const { json } = await postJson(`${base}/api/chat`, {
       body: {
@@ -20,6 +20,7 @@ export const ollama = {
         messages: [{ role: 'system', content: system }, { role: 'user', content: prompt }],
       },
       fetchImpl,
+      timeoutMs,
     });
     return json.message?.content || '';
   },

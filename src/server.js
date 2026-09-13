@@ -224,12 +224,13 @@ app.get('/api/config', (req, res) => {
     model: app.locals.runtimeAiConfig?.model || process.env.AI_MODEL || DEFAULT_MODEL[provider] || '',
     hasApiKey: aiKeyConfigured(),
     baseUrl: app.locals.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || '',
+    timeoutMs: app.locals.runtimeAiConfig?.timeoutMs || Number(process.env.AI_TIMEOUT_MS || 120000),
     availableProviders: PROVIDER_INFO,
   });
 });
 
 app.post('/api/config', (req, res) => {
-  const { provider, apiKey, model, baseUrl } = req.body || {};
+  const { provider, apiKey, model, baseUrl, timeoutMs } = req.body || {};
   if (provider && !PROVIDERS.includes(provider)) {
     return res.status(400).json({ error: 'Invalid provider' });
   }
@@ -239,10 +240,12 @@ app.post('/api/config', (req, res) => {
       return res.status(400).json({ error: err.message });
     }
   }
+  const nTimeout = Number(timeoutMs);
   app.locals.runtimeAiConfig = {
     provider: provider || 'openrouter',
     apiKey: apiKey || '',
     model: model || DEFAULT_MODEL[provider] || '',
+    ...(Number.isFinite(nTimeout) && nTimeout >= 30000 && nTimeout <= 600000 ? { timeoutMs: Math.round(nTimeout) } : {}),
   };
   if (provider === 'ollama') app.locals.ollamaBaseUrl = ollamaBaseUrl;
   // Invalidate cached AI health so the next probe reflects the new config

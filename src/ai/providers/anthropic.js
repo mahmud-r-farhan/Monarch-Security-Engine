@@ -4,7 +4,7 @@ import { postJson } from './http.js';
 export const anthropic = {
   id: 'anthropic',
 
-  async chat({ apiKey, model, system, prompt, fetchImpl }) {
+  async chat({ apiKey, model, system, prompt, fetchImpl, timeoutMs }) {
     const { json } = await postJson('https://api.anthropic.com/v1/messages', {
       headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
       body: {
@@ -15,6 +15,7 @@ export const anthropic = {
         messages: [{ role: 'user', content: prompt }],
       },
       fetchImpl,
+      timeoutMs,
     });
     return json.content?.map(c => c.text || '').join('') || '';
   },

@@ -542,6 +542,65 @@ code { font-family: var(--font-mono); background: var(--bg-soft); border: 1px so
 .ai-health-result.ok { border-color: rgba(31,207,122,0.3); background: var(--success-soft); }
 .ai-health-result.fail { border-color: rgba(255,77,106,0.3); background: var(--danger-soft); }
 .ai-health-result .hint { display: block; margin-top: 4px; color: var(--text-muted); font-size: 11px; }
+.ai-health-result .hint.warn { color: var(--warning); }
+.ai-health-result code { font-family: var(--font-mono); background: var(--bg-card); padding: 1px 4px; border-radius: 4px; }
+
+/* Header AI status dot */
+#ai-dot { background: var(--text-faint); box-shadow: 0 0 8px var(--text-faint); }
+#ai-dot.ok { background: var(--success); box-shadow: 0 0 8px var(--success); }
+#ai-dot.fail { background: var(--danger); box-shadow: 0 0 8px var(--danger); animation: pulse 1.2s infinite; }
+
+/* Key / model input rows with a trailing action button */
+.key-wrap { display: flex; gap: 6px; align-items: stretch; }
+.key-wrap input { flex: 1; }
+.key-toggle {
+  width: 34px; border-radius: var(--radius-xs); border: 1px solid var(--border);
+  background: var(--bg-input); color: var(--text-soft); cursor: pointer; font-size: 13px;
+  flex-shrink: 0; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.key-toggle:hover { border-color: var(--border-strong); background: var(--bg-card); color: var(--text); }
+.key-toggle:disabled { opacity: 0.5; cursor: wait; }
+
+/* Provider hint + status board inside the AI modal */
+.provider-hint { font-size: 11.5px; color: var(--text-soft); line-height: 1.55; padding: 8px 10px; background: var(--primary-soft); border: 1px solid rgba(79,124,255,0.2); border-radius: var(--radius-sm); }
+.provider-status { display: flex; flex-direction: column; gap: 4px; }
+.ps-row {
+  display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 5px 8px;
+  border: 1px solid var(--border-soft); border-radius: var(--radius-xs); background: var(--bg-soft);
+  cursor: pointer; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ps-row:hover { border-color: var(--border-strong); background: var(--bg-card); }
+.ps-row.muted { cursor: default; color: var(--text-muted); }
+.ps-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.ps-dot.ok { background: var(--success); box-shadow: 0 0 6px var(--success); }
+.ps-dot.fail { background: var(--danger); box-shadow: 0 0 6px var(--danger); }
+.ps-dot.pending { background: var(--text-faint); animation: pulse 1.2s infinite; }
+.ps-name { font-weight: 700; text-transform: capitalize; min-width: 74px; }
+.ps-detail { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Advanced section (timeout etc.) */
+details.adv { border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--bg-soft); padding: 8px 12px; }
+details.adv summary { cursor: pointer; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-soft); user-select: none; }
+details.adv summary:hover { color: var(--text); }
+
+/* AI insights panel — risk pill + degradation warning card */
+.risk-pill {
+  display: inline-block; margin-top: 8px; padding: 3px 10px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 800; font-family: var(--font-mono); letter-spacing: 0.03em;
+  border: 1px solid var(--border-strong); background: var(--bg-card); color: var(--text-soft);
+}
+.risk-pill.risk-minimal, .risk-pill.risk-low { border-color: rgba(31,207,122,0.4); background: var(--success-soft); color: var(--success); }
+.risk-pill.risk-medium { border-color: rgba(255,176,46,0.4); background: var(--warning-soft); color: var(--warning); }
+.risk-pill.risk-high { border-color: rgba(255,77,106,0.4); background: var(--danger-soft); color: var(--danger); }
+.risk-pill.risk-critical { border-color: var(--danger); background: var(--danger); color: #fff; }
+.ai-warn-card {
+  margin-top: 10px; padding: 10px 12px; background: var(--warning-soft);
+  border: 1px solid rgba(255,176,46,0.3); border-radius: var(--radius-sm); font-size: 12px;
+}
+.ai-warn-head { color: var(--warning); font-weight: 600; line-height: 1.5; }
+.ai-warn-hint { margin-top: 6px; color: var(--text-soft); line-height: 1.5; font-size: 11.5px; }
+.ai-warn-actions { margin-top: 8px; display: flex; gap: 8px; }
+.ai-warn-btn { font-size: 11px; padding: 4px 10px; }
 
 /* Notifications */
 .notif-wrap { position: relative; }
