@@ -428,43 +428,109 @@
       <div class="section-hero">
         <div class="section-title-wrap">
           <h2>📡 Local Network Device Discovery &amp; Port Mapper</h2>
-          <p>Discover active LAN hosts via ARP table, resolve hardware vendors by IEEE MAC OUI, and map open TCP ports in real time.</p>
-        </div>
-        <div class="hero-actions">
-          <button id="net-scan-btn" class="btn btn-primary">
-            <span class="btn-icon">⚡</span> Scan Local Network
-          </button>
+          <p>Multi-target subnet discovery (CIDR / IP ranges), active ICMP sweeps, default gateway detection, and layered TCP + UDP port mapping.</p>
         </div>
       </div>
 
+      <!-- Discovery Controls Card -->
+      <div class="net-controls-card">
+        <div class="net-controls-grid">
+          <div class="form-group" style="flex: 2;">
+            <label>Target Subnet / IP Range / Hostnames</label>
+            <div class="form-row">
+              <select id="net-segment-select" class="select-styled" style="width: 200px;">
+                <option value="">Detecting subnets…</option>
+              </select>
+              <input id="net-target-input" placeholder="e.g. 192.168.0.0/24, 10.0.0.1-10.0.0.50, nas.local" spellcheck="false" style="flex: 1;">
+            </div>
+            <span class="form-subtext">Supports CIDR (192.168.1.0/24), ranges (10.0.0.1-10.0.0.50), or comma-separated lists.</span>
+          </div>
+
+          <div class="form-group" style="width: 140px;">
+            <label>Scan Mode</label>
+            <select id="net-mode-select" class="select-styled">
+              <option value="fast" selected>Fast (Top 30 TCP)</option>
+              <option value="full">Full (Common TCP + UDP)</option>
+              <option value="custom">Custom Ports</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="align-self: flex-end;">
+            <button id="net-scan-btn" class="btn btn-primary" style="height: 34px; padding: 0 16px;">
+              <span class="btn-icon">⚡</span> Start Discovery
+            </button>
+          </div>
+        </div>
+
+        <!-- Custom Ports Row (conditionally visible) -->
+        <div id="net-custom-row" class="form-row hidden" style="margin-top: 10px; border-top: 1px solid var(--border-default); padding-top: 10px;">
+          <div class="form-group" style="flex: 1;">
+            <label>Custom TCP Ports (comma-separated)</label>
+            <input id="net-custom-tcp" placeholder="e.g. 21, 22, 80, 443, 3000, 8080, 27017">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Custom UDP Ports (comma-separated)</label>
+            <input id="net-custom-udp" placeholder="e.g. 53, 67, 123, 161, 1900, 5353">
+          </div>
+        </div>
+
+        <!-- Live Scan Progress Bar -->
+        <div id="net-progress-wrap" class="net-progress-wrap hidden">
+          <div class="net-progress-bar">
+            <div id="net-progress-fill" class="net-progress-fill" style="width: 0%;"></div>
+          </div>
+          <div id="net-status-text" class="net-status-text">Preparing discovery sweep…</div>
+        </div>
+      </div>
+
+      <!-- Host Interfaces -->
       <div class="net-ifaces-card">
         <div class="box-header">
           <h3>Host Network Interfaces</h3>
+          <span id="net-gateway-badge" class="badge" style="display: none;">Gateway: –</span>
         </div>
         <div id="ifaces-list" class="ifaces-grid">
           <div class="empty-hint">Loading network interfaces…</div>
         </div>
       </div>
 
+      <!-- Discovered Devices -->
       <div class="net-devices-card">
-        <div class="box-header">
-          <h3>Discovered Network Devices &amp; Hardware Vendors</h3>
-          <span class="badge" id="dev-count-badge">0 Devices</span>
+        <div class="box-header" style="flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h3>Discovered Network Devices &amp; Port Map</h3>
+            <span class="badge" id="dev-count-badge">0 Devices</span>
+          </div>
+
+          <!-- Protocol Legend & Search Bar -->
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="proto-legend">
+              <span class="legend-item"><span class="legend-dot tcp"></span> TCP</span>
+              <span class="legend-item"><span class="legend-dot udp"></span> UDP</span>
+              <span class="legend-item"><span class="legend-dot icmp"></span> ICMP</span>
+            </div>
+            <input id="dev-search-input" placeholder="🔍 Filter IP, hostname, vendor…" style="width: 180px; padding: 4px 8px; font-size: 11px;">
+            <button id="dev-export-csv" class="btn btn-glass" style="font-size: 11px; padding: 4px 10px;">Export CSV</button>
+            <button id="dev-export-json" class="btn btn-glass" style="font-size: 11px; padding: 4px 10px;">Export JSON</button>
+            <button id="dev-clear-btn" class="btn btn-glass" style="font-size: 11px; padding: 4px 10px;">Clear</button>
+          </div>
         </div>
+
         <div class="net-table-wrap">
           <table class="net-table" id="devices-table">
             <thead>
               <tr>
-                <th style="width: 140px;">IP Address</th>
-                <th style="width: 160px;">MAC Address</th>
-                <th>Hardware Manufacturer (OUI)</th>
-                <th>Hostname / Interface</th>
-                <th>Open TCP Services</th>
-                <th style="width: 90px;">Action</th>
+                <th style="width: 150px;">IP Address</th>
+                <th style="width: 150px;">MAC Address</th>
+                <th style="width: 170px;">Hardware Vendor (OUI)</th>
+                <th style="width: 160px;">Hostname / Role</th>
+                <th style="width: 100px;">Latency</th>
+                <th>Open Services (TCP &amp; UDP)</th>
+                <th style="width: 110px; text-align: right;">Action</th>
               </tr>
             </thead>
             <tbody id="devices-body">
-              <tr><td colspan="6" class="empty-hint">Click "Scan Local Network" to discover live network devices.</td></tr>
+              <tr><td colspan="7" class="empty-hint">Configure a target subnet above and click "Start Discovery".</td></tr>
             </tbody>
           </table>
         </div>

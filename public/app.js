@@ -840,42 +840,177 @@ function renderDashboard() {
 }
 
 // ========================================================
-// VIEW: NETWORK DISCOVERY
+// VIEW: NETWORK DISCOVERY & PORT MAPPER (NetLAN Architecture)
 // ========================================================
+let netScanEventSource = null;
+let networkSearchQuery = '';
+
 function setupNetworkDiscovery() {
   loadNetworkInfo();
 
-  $('net-scan-btn')?.addEventListener('click', async () => {
-    $('net-scan-btn').disabled = true;
-    $('net-scan-btn').innerHTML = '<span class="pulse-dot"></span> Scanning LAN…';
-
-    const es = new EventSource('/api/netdiscovery/scan');
-    es.addEventListener('devices', (ev) => {
-      const data = JSON.parse(ev.data);
-      state.discoveredDevices = data.devices || [];
-      renderDevicesTable();
-    });
-
-    es.addEventListener('device_updated', (ev) => {
-      const { device } = JSON.parse(ev.data);
-      const idx = state.discoveredDevices.findIndex((d) => d.ip === device.ip);
-      if (idx >= 0) state.discoveredDevices[idx] = device;
-      else state.discoveredDevices.push(device);
-      renderDevicesTable();
-    });
-
-    es.addEventListener('done', () => {
-      es.close();
-      $('net-scan-btn').disabled = false;
-      $('net-scan-btn').innerHTML = '<span class="btn-icon">⚡</span> Scan Local Network';
-    });
-
-    es.addEventListener('error', () => {
-      es.close();
-      $('net-scan-btn').disabled = false;
-      $('net-scan-btn').innerHTML = '<span class="btn-icon">⚡</span> Scan Local Network';
-    });
+  // Mode switcher (shows custom ports row when 'custom')
+  $('net-mode-select')?.addEventListener('change', (e) => {
+    const isCustom = e.target.value === 'custom';
+    $('net-custom-row')?.classList.toggle('hidden', !isCustom);
   });
+
+  // Segment select dropdown auto-fills target input
+  $('net-segment-select')?.addEventListener('change', (e) => {
+    if (e.target.value) {
+      $('net-target-input').value = e.target.value;
+    }
+  });
+
+  // Live device search / filter
+  $('dev-search-input')?.addEventListener('input', (e) => {
+    networkSearchQuery = e.target.value.toLowerCase().trim();
+    renderDevicesTable();
+  });
+
+  // Export CSV
+  $('dev-export-csv')?.addEventListener('click', () => {
+    if (!state.discoveredDevices.length) return alert('No devices to export.');
+    const rows = [
+      ['IP Address', 'MAC Address', 'Vendor', 'Hostname', 'Is Gateway', 'Latency Ms', 'Open TCP Ports', 'Open UDP Ports'],
+      ...state.discoveredDevices.map(d => [
+        d.ip,
+        d.mac || '',
+        d.vendor || '',
+        d.hostname || '',
+        d.isGateway ? 'YES' : 'NO',
+        d.rtt ?? '',
+        (d.openPorts || []).filter(p => p.proto === 'tcp' || !p.proto).map(p => `${p.port}/${p.service}`).join('; '),
+        (d.openPorts || []).filter(p => p.proto === 'udp').map(p => `${p.port}/${p.service}`).join('; '),
+      ]),
+    ];
+    const csvContent = rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `netlan-discovery-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Export JSON
+  $('dev-export-json')?.addEventListener('click', () => {
+    if (!state.discoveredDevices.length) return alert('No devices to export.');
+    const blob = new Blob([JSON.stringify(state.discoveredDevices, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `netlan-discovery-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Clear devices
+  $('dev-clear-btn')?.addEventListener('click', () => {
+    state.discoveredDevices = [];
+    renderDevicesTable();
+  });
+
+  // Start / Cancel Discovery Sweep
+  $('net-scan-btn')?.addEventListener('click', async () => {
+    const scanBtn = $('net-scan-btn');
+    if (netScanEventSource) {
+      // Cancel active scan
+      netScanEventSource.close();
+      netScanEventSource = null;
+      scanBtn.disabled = false;
+      scanBtn.innerHTML = '<span class="btn-icon">⚡</span> Start Discovery';
+      $('net-progress-wrap')?.classList.add('hidden');
+      return;
+    }
+
+    const subnet = $('net-target-input').value.trim() || undefined;
+    const mode = $('net-mode-select').value;
+    let customTcp = undefined;
+    let customUdp = undefined;
+
+    if (mode === 'custom') {
+      const tcpRaw = $('net-custom-tcp').value.trim();
+      if (tcpRaw) customTcp = tcpRaw.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n));
+      const udpRaw = $('net-custom-udp').value.trim();
+      if (udpRaw) customUdp = udpRaw.split(',').map(n => parseInt(n.trim(), 10)).filter(n => !isNaN(n));
+    }
+
+    scanBtn.disabled = false;
+    scanBtn.innerHTML = '<span class="pulse-dot"></span> Stop Discovery';
+    $('net-progress-wrap')?.classList.remove('hidden');
+    $('net-progress-fill').style.width = '5%';
+    $('net-status-text').textContent = 'Initializing network sweep…';
+
+    try {
+      const res = await fetch('/api/netdiscovery/scan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ subnet, mode, customTcp, customUdp }),
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const processLine = (line) => {
+        if (!line.startsWith('data: ')) return;
+        try {
+          const ev = JSON.parse(line.slice(6));
+          handleDiscoveryEvent(ev);
+        } catch { /* ignore parse error */ }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop();
+        for (const part of parts) {
+          const lines = part.split('\n');
+          for (const line of lines) processLine(line);
+        }
+      }
+    } catch (err) {
+      alert(`Discovery scan error: ${err.message}`);
+    } finally {
+      scanBtn.disabled = false;
+      scanBtn.innerHTML = '<span class="btn-icon">⚡</span> Start Discovery';
+      $('net-progress-fill').style.width = '100%';
+      $('net-status-text').textContent = `Discovery completed · Found ${state.discoveredDevices.length} hosts`;
+    }
+  });
+}
+
+function handleDiscoveryEvent(ev) {
+  if (ev.type === 'status') {
+    $('net-status-text').textContent = ev.message;
+  } else if (ev.type === 'sweep_progress') {
+    const pct = Math.round((ev.done / ev.total) * 40);
+    $('net-progress-fill').style.width = `${pct}%`;
+    $('net-status-text').textContent = `ICMP ping sweeping: ${ev.done} / ${ev.total} targets checked…`;
+  } else if (ev.type === 'devices') {
+    state.discoveredDevices = ev.devices || [];
+    renderDevicesTable();
+    if (ev.gateway) {
+      $('net-gateway-badge').style.display = 'inline-block';
+      $('net-gateway-badge').textContent = `Gateway: ${ev.gateway}`;
+    }
+  } else if (ev.type === 'progress') {
+    const pct = 40 + Math.round((ev.current / ev.total) * 60);
+    $('net-progress-fill').style.width = `${pct}%`;
+    $('net-status-text').textContent = `Scanning services on ${ev.device} (${ev.current}/${ev.total})…`;
+  } else if (ev.type === 'device_updated') {
+    const { device } = ev;
+    const idx = state.discoveredDevices.findIndex(d => d.ip === device.ip);
+    if (idx >= 0) state.discoveredDevices[idx] = device;
+    else state.discoveredDevices.push(device);
+    renderDevicesTable();
+  } else if (ev.type === 'done') {
+    $('net-progress-fill').style.width = '100%';
+    $('net-status-text').textContent = `Network discovery complete · ${ev.devices?.length || state.discoveredDevices.length} hosts mapped.`;
+  }
 }
 
 async function loadNetworkInfo() {
@@ -884,8 +1019,34 @@ async function loadNetworkInfo() {
       fetch('/api/netdiscovery/interfaces'),
       fetch('/api/netdiscovery/arp'),
     ]);
-    state.networkInterfaces = await ifacesRes.json();
+    const ifacesData = await ifacesRes.json();
+    state.networkInterfaces = ifacesData.interfaces || (Array.isArray(ifacesData) ? ifacesData : []);
+    state.gateway = ifacesData.gateway || null;
     state.discoveredDevices = await arpRes.json();
+
+    // Populate segment select dropdown
+    const segSelect = $('net-segment-select');
+    if (segSelect && state.networkInterfaces.length) {
+      segSelect.innerHTML = '<option value="">Select Subnet Segment…</option>' + state.networkInterfaces
+        .filter(i => !i.internal && i.cidr)
+        .map(i => {
+          const isGw = state.gateway && i.address.slice(0, i.address.lastIndexOf('.')) === state.gateway.slice(0, state.gateway.lastIndexOf('.'));
+          return `<option value="${escapeHtml(i.cidr)}">${isGw ? '★ ' : ''}${escapeHtml(i.cidr)} (${escapeHtml(i.name)})</option>`;
+        })
+        .join('');
+
+      // Auto-select first external CIDR
+      const firstExt = state.networkInterfaces.find(i => !i.internal && i.cidr);
+      if (firstExt && !$('net-target-input').value) {
+        $('net-target-input').value = firstExt.cidr;
+        segSelect.value = firstExt.cidr;
+      }
+    }
+
+    if (state.gateway) {
+      $('net-gateway-badge').style.display = 'inline-block';
+      $('net-gateway-badge').textContent = `Gateway: ${state.gateway}`;
+    }
 
     renderInterfaces();
     renderDevicesTable();
@@ -902,9 +1063,12 @@ function renderInterfaces() {
     .map(
       (iface) => `
     <div class="iface-card">
-      <div class="iface-name">${escapeHtml(iface.name)}</div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span class="iface-name">${escapeHtml(iface.name)}</span>
+        ${iface.cidr ? `<span class="badge" style="font-size:10px;">${escapeHtml(iface.cidr)}</span>` : ''}
+      </div>
       <div class="iface-ip">${escapeHtml(iface.address)} / ${escapeHtml(iface.netmask)}</div>
-      <div class="iface-mac">${escapeHtml(iface.mac)} (${escapeHtml(iface.vendor || 'Unknown')})</div>
+      <div class="iface-mac">${escapeHtml(iface.mac || '–')} · <span class="vendor-badge">${escapeHtml(iface.vendor || 'Unknown')}</span></div>
     </div>
   `
     )
@@ -913,36 +1077,91 @@ function renderInterfaces() {
 
 function renderDevicesTable() {
   const tbody = $('devices-body');
-  $('dev-count-badge').textContent = `${state.discoveredDevices.length} Devices`;
+  let list = state.discoveredDevices || [];
 
-  if (!state.discoveredDevices.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-hint">No devices discovered yet.</td></tr>';
+  if (networkSearchQuery) {
+    list = list.filter(d =>
+      d.ip.toLowerCase().includes(networkSearchQuery) ||
+      (d.mac && d.mac.toLowerCase().includes(networkSearchQuery)) ||
+      (d.vendor && d.vendor.toLowerCase().includes(networkSearchQuery)) ||
+      (d.hostname && d.hostname.toLowerCase().includes(networkSearchQuery))
+    );
+  }
+
+  $('dev-count-badge').textContent = `${list.length} ${list.length === 1 ? 'Host' : 'Hosts'}`;
+
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-hint">No hosts found matching current filter or subnet.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = state.discoveredDevices
-    .map(
-      (d) => `
+  tbody.innerHTML = list
+    .map((d) => {
+      const tcpPorts = (d.openPorts || []).filter(p => p.proto === 'tcp' || !p.proto);
+      const udpPorts = (d.openPorts || []).filter(p => p.proto === 'udp');
+
+      return `
     <tr>
-      <td style="font-weight:600; color:var(--text-primary);">${escapeHtml(d.ip)}</td>
-      <td>${escapeHtml(d.mac || '–')}</td>
-      <td><span class="vendor-badge">${escapeHtml(d.vendor || 'Unknown')}</span></td>
-      <td>${escapeHtml(d.hostname || d.interface || '–')}</td>
+      <td>
+        <span class="copyable" onclick="copyToClipboard('${escapeHtml(d.ip)}', 'IP Copied')" title="Click to copy IP" style="font-weight:600; color:var(--text-primary); font-family:var(--font-mono);">
+          ${escapeHtml(d.ip)}
+        </span>
+        ${d.isGateway ? '<span class="gateway-badge" title="Default Route Gateway">★ Gateway</span>' : ''}
+        ${d.isSelf ? '<span class="self-badge" title="Local System Interface">This Host</span>' : ''}
+      </td>
       <td>
         ${
-          d.openPorts && d.openPorts.length
-            ? d.openPorts.map((p) => `<span class="badge">${p.port} (${p.service})</span>`).join(' ')
-            : '<span style="color:var(--text-muted);">No ports scanned</span>'
+          d.mac
+            ? `<span class="copyable" onclick="copyToClipboard('${escapeHtml(d.mac)}', 'MAC Copied')" title="Click to copy MAC" style="font-family:var(--font-mono); font-size:11px;">${escapeHtml(d.mac)}</span>`
+            : '<span style="color:var(--text-muted);">–</span>'
+        }
+      </td>
+      <td><span class="vendor-badge">${escapeHtml(d.vendor || 'Unknown')}</span></td>
+      <td style="font-size:11px; color:var(--text-secondary);">${escapeHtml(d.hostname || d.interface || '–')}</td>
+      <td>
+        ${
+          d.rtt !== null && d.rtt !== undefined
+            ? `<span class="badge-icmp" title="ICMP Echo Round-Trip Time">${Math.round(d.rtt)}ms</span>`
+            : d.alive
+            ? '<span class="sev-tag low" style="font-size:9px; padding:1px 5px;">ONLINE</span>'
+            : '<span style="color:var(--text-muted); font-size:11px;">–</span>'
         }
       </td>
       <td>
-        <button class="btn btn-glass" style="font-size:10px; padding:2px 6px;" onclick="scanHostPortsModal('${d.ip}')">Port Scan</button>
+        <div style="display:flex; flex-wrap:wrap; gap:2px; max-width:350px;">
+          ${tcpPorts.map(p => `<span class="badge-tcp" title="${escapeHtml(p.banner || p.service || '')}">${p.port}/tcp ${escapeHtml(p.service || '')}</span>`).join('')}
+          ${udpPorts.map(p => `<span class="badge-udp" title="${escapeHtml(p.service || '')}">${p.port}/udp ${escapeHtml(p.service || '')}</span>`).join('')}
+          ${!tcpPorts.length && !udpPorts.length ? '<span style="color:var(--text-muted); font-size:11px;">No open ports found</span>' : ''}
+        </div>
+      </td>
+      <td style="text-align:right;">
+        <button class="btn btn-glass" style="font-size:10px; padding:2px 7px;" onclick="scanHostPortsModal('${escapeHtml(d.ip)}')">Port Scan</button>
       </td>
     </tr>
-  `
-    )
+  `;
+    })
     .join('');
 }
+
+window.copyToClipboard = (text, message = 'Copied') => {
+  navigator.clipboard.writeText(text).then(() => {
+    // transient visual indicator
+    const note = document.createElement('div');
+    note.style.position = 'fixed';
+    note.style.bottom = '20px';
+    note.style.right = '20px';
+    note.style.background = 'var(--bg-surface)';
+    note.style.border = '1px solid var(--border-focus)';
+    note.style.color = 'var(--text-primary)';
+    note.style.padding = '6px 12px';
+    note.style.borderRadius = 'var(--radius-md)';
+    note.style.fontSize = '12px';
+    note.style.zIndex = '9999';
+    note.textContent = message;
+    document.body.appendChild(note);
+    setTimeout(() => note.remove(), 1200);
+  });
+};
 
 window.scanHostPortsModal = async (host) => {
   const btn = event.target;

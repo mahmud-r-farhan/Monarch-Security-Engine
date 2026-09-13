@@ -13,7 +13,7 @@ import { loadEnv } from './env.js';
 import { wsServer } from './modules/ws.js';
 import { monitorService } from './modules/monitor.js';
 import { LoadTestRunner } from './modules/loadtest.js';
-import { getLocalInterfaces, getArpTable, runNetworkDiscovery, scanHostPorts } from './modules/netdiscovery.js';
+import { getLocalInterfaces, getArpTable, runNetworkDiscovery, scanHostPorts, getDefaultRoute } from './modules/netdiscovery.js';
 import { pokeHttp, pokeSsh } from './modules/poking.js';
 import { testDbConnection, runDbLoadTest } from './modules/database.js';
 
@@ -310,8 +310,10 @@ app.post('/api/loadtest/run', async (req, res) => {
 /* Network Discovery Endpoints                                        */
 /* ------------------------------------------------------------------ */
 
-app.get('/api/netdiscovery/interfaces', (_, res) => {
-  res.json(getLocalInterfaces());
+app.get('/api/netdiscovery/interfaces', async (_, res) => {
+  const ifaces = getLocalInterfaces();
+  const route = await getDefaultRoute();
+  res.json({ interfaces: ifaces, gateway: route.gateway, ifaceIp: route.ifaceIp });
 });
 
 app.get('/api/netdiscovery/arp', async (_, res) => {
@@ -320,10 +322,10 @@ app.get('/api/netdiscovery/arp', async (_, res) => {
 });
 
 app.post('/api/netdiscovery/scan-host', async (req, res) => {
-  const { host, ports, timeoutMs } = req.body || {};
+  const { host, tcpPorts, udpPorts, timeoutMs } = req.body || {};
   if (!host) return res.status(400).json({ error: 'host is required' });
   try {
-    const openPorts = await scanHostPorts(host, ports, timeoutMs);
+    const openPorts = await scanHostPorts(host, tcpPorts, udpPorts, timeoutMs);
     res.json({ host, openPorts });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -331,7 +333,7 @@ app.post('/api/netdiscovery/scan-host', async (req, res) => {
 });
 
 app.post('/api/netdiscovery/scan', async (req, res) => {
-  const { subnet, ports } = req.body || {};
+  const { subnet, mode, customTcp, customUdp, pingTimeout, portTimeout } = req.body || {};
 
   res.set({
     'Content-Type': 'text/event-stream',
@@ -344,7 +346,11 @@ app.post('/api/netdiscovery/scan', async (req, res) => {
   try {
     const result = await runNetworkDiscovery({
       subnet,
-      ports,
+      mode,
+      customTcp,
+      customUdp,
+      pingTimeout,
+      portTimeout,
       onEvent: ev => {
         res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`);
       },

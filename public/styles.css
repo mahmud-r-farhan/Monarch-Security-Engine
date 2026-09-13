@@ -1470,3 +1470,127 @@ input:focus, textarea:focus, select:focus {
 .hidden {
   display: none !important;
 }
+
+/* ======================================================== */
+/* NETLAN NETWORK DISCOVERY & PORT MAPPER STYLES            */
+/* ======================================================== */
+.net-controls-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+.net-controls-grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.net-progress-wrap {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-muted);
+}
+.net-progress-bar {
+  height: 5px;
+  background: var(--bg-canvas);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.net-progress-fill {
+  height: 100%;
+  background: var(--accent-blue);
+  transition: width 0.2s ease;
+}
+.net-status-text {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  margin-top: 5px;
+}
+
+.proto-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.legend-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.legend-dot.tcp { background: var(--sev-low-fg); }
+.legend-dot.udp { background: var(--accent-blue); }
+.legend-dot.icmp { background: var(--sev-med-fg); }
+
+.badge-tcp {
+  background: rgba(16, 185, 129, 0.12);
+  color: var(--sev-low-fg);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  margin: 1px 2px;
+}
+.badge-udp {
+  background: rgba(88, 166, 255, 0.12);
+  color: var(--accent-blue);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+  margin: 1px 2px;
+}
+.badge-icmp {
+  background: rgba(210, 153, 34, 0.12);
+  color: var(--sev-med-fg);
+  border: 1px solid rgba(210, 153, 34, 0.3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+.gateway-badge {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  margin-left: 6px;
+}
+.self-badge {
+  background: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  margin-left: 6px;
+}
+
+.copyable {
+  cursor: pointer;
+  border-bottom: 1px dotted var(--text-muted);
+  transition: color 0.15s ease;
+}
+.copyable:hover {
+  color: var(--accent-blue);
+  border-bottom-color: var(--accent-blue);
+}

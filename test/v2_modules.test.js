@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveVendor, normalizeMac } from '../src/modules/oui.js';
-import { parseArpOutput, checkTcpPort } from '../src/modules/netdiscovery.js';
+import { parseArpOutput, checkTcpPort, ipToInt, intToIp, parseTargets, expandTargets, getDefaultRoute } from '../src/modules/netdiscovery.js';
 import { monitorService } from '../src/modules/monitor.js';
 import { checkTechStack } from '../src/engine/checks/techstack.js';
 import { checkSeo } from '../src/engine/checks/seo.js';
@@ -32,6 +32,42 @@ Interface: 192.168.1.100 --- 0x11
   assert.equal(devices[0].vendor, 'Apple');
   assert.equal(devices[1].ip, '192.168.1.254');
   assert.equal(devices[1].vendor, 'Raspberry Pi Foundation');
+});
+
+test('NetLAN IP target parser supports CIDR, ranges, and comma-separated specs', () => {
+  assert.equal(ipToInt('192.168.1.1'), 3232235777);
+  assert.equal(intToIp(3232235777), '192.168.1.1');
+
+  // Single host
+  const single = parseTargets('10.0.0.5');
+  assert.equal(single.count, 1);
+  assert.equal(intToIp(single.first), '10.0.0.5');
+
+  // Subnet /29 (skips network & broadcast for <= 30)
+  const sub = parseTargets('192.168.1.0/29');
+  assert.equal(sub.count, 6);
+  assert.equal(intToIp(sub.first), '192.168.1.1');
+  assert.equal(intToIp(sub.last), '192.168.1.6');
+
+  // IP Range
+  const range = parseTargets('172.16.0.10 - 172.16.0.15');
+  assert.equal(range.count, 6);
+  assert.equal(intToIp(range.first), '172.16.0.10');
+  assert.equal(intToIp(range.last), '172.16.0.15');
+
+  // Multi-target expansion
+  const expanded = expandTargets('192.168.1.1-192.168.1.3, 192.168.1.2, 10.0.0.1');
+  assert.equal(expanded.count, 4);
+  assert.ok(expanded.ips.includes('10.0.0.1'));
+  assert.ok(expanded.ips.includes('192.168.1.1'));
+  assert.ok(expanded.ips.includes('192.168.1.2'));
+  assert.ok(expanded.ips.includes('192.168.1.3'));
+});
+
+test('Default gateway and route detection returns interface info', async () => {
+  const route = await getDefaultRoute();
+  assert.ok(route !== null);
+  assert.ok('gateway' in route);
 });
 
 test('Monitor service computes stats correctly', async () => {

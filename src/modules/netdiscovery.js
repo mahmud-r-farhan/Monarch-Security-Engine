@@ -1,44 +1,291 @@
 import os from 'node:os';
 import net from 'node:net';
+import dgram from 'node:dgram';
 import dns from 'node:dns/promises';
-import { exec } from 'node:child_process';
+import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolveVendor, normalizeMac } from './oui.js';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+const PLATFORM = os.platform(); // 'win32' | 'linux' | 'darwin'
 
-export const COMMON_PORTS = [
-  { port: 21, service: 'FTP' },
-  { port: 22, service: 'SSH' },
-  { port: 23, service: 'Telnet' },
-  { port: 25, service: 'SMTP' },
-  { port: 53, service: 'DNS' },
-  { port: 80, service: 'HTTP' },
-  { port: 110, service: 'POP3' },
-  { port: 143, service: 'IMAP' },
-  { port: 443, service: 'HTTPS' },
-  { port: 445, service: 'SMB' },
-  { port: 993, service: 'IMAPS' },
-  { port: 995, service: 'POP3S' },
-  { port: 1433, service: 'MSSQL' },
-  { port: 1521, service: 'Oracle' },
-  { port: 3000, service: 'Node / Dev' },
-  { port: 3306, service: 'MySQL' },
-  { port: 3389, service: 'RDP' },
-  { port: 5000, service: 'Flask / Dev' },
-  { port: 5432, service: 'PostgreSQL' },
-  { port: 6379, service: 'Redis' },
-  { port: 8000, service: 'HTTP Alt' },
-  { port: 8080, service: 'HTTP Proxy' },
-  { port: 8443, service: 'HTTPS Alt' },
-  { port: 9000, service: 'SonarQube / PHP' },
-  { port: 9200, service: 'Elasticsearch' },
-  { port: 27017, service: 'MongoDB' },
+/** Upper bound on how many hosts one target sweep may expand to. */
+export const MAX_HOSTS = 65536;
+
+/* ------------------------------------------------------------------ */
+/* Service Dictionaries & Port Definitions (TCP + UDP)                */
+/* ------------------------------------------------------------------ */
+
+export const TCP_SERVICES = {
+  21: 'FTP',
+  22: 'SSH',
+  23: 'Telnet',
+  25: 'SMTP',
+  53: 'DNS',
+  80: 'HTTP',
+  110: 'POP3',
+  111: 'RPC',
+  135: 'MSRPC',
+  139: 'NetBIOS',
+  143: 'IMAP',
+  161: 'SNMP',
+  389: 'LDAP',
+  443: 'HTTPS',
+  445: 'SMB',
+  515: 'LPD',
+  548: 'AFP',
+  554: 'RTSP',
+  587: 'SMTP',
+  631: 'IPP',
+  993: 'IMAPS',
+  995: 'POP3S',
+  1080: 'SOCKS',
+  1433: 'MSSQL',
+  1521: 'Oracle',
+  1723: 'PPTP',
+  1883: 'MQTT',
+  1900: 'SSDP',
+  2049: 'NFS',
+  2375: 'Docker',
+  3000: 'Dev/HTTP',
+  3306: 'MySQL',
+  3389: 'RDP',
+  5000: 'UPnP/Dev',
+  5060: 'SIP',
+  5353: 'mDNS',
+  5432: 'Postgres',
+  5555: 'ADB',
+  5900: 'VNC',
+  6379: 'Redis',
+  7000: 'HTTP',
+  8000: 'HTTP-alt',
+  8006: 'Proxmox',
+  8080: 'HTTP-alt',
+  8081: 'HTTP-alt',
+  8443: 'HTTPS-alt',
+  8883: 'MQTTS',
+  9000: 'PHP-FPM',
+  9100: 'Printer',
+  9200: 'Elasticsearch',
+  27017: 'MongoDB',
+  32400: 'Plex',
+  62078: 'iOS-sync',
+};
+
+export const COMMON_PORTS = Object.entries(TCP_SERVICES).map(([port, service]) => ({
+  port: Number(port),
+  service,
+}));
+
+export const FAST_TCP_PORTS = [
+  21, 22, 23, 25, 53, 80, 110, 139, 143, 161, 443, 445, 515, 548, 554, 631,
+  993, 1883, 3000, 3306, 3389, 5000, 5432, 5900, 6379, 8006, 8080, 8443, 9100, 27017,
 ];
 
-/**
- * Returns all local active network interfaces with IP, netmask, MAC, and CIDR.
- */
+export const UDP_SERVICES = {
+  53: 'DNS',
+  67: 'DHCP',
+  68: 'DHCP',
+  69: 'TFTP',
+  123: 'NTP',
+  137: 'NetBIOS',
+  138: 'NetBIOS',
+  161: 'SNMP',
+  162: 'SNMP-trap',
+  500: 'IKE',
+  514: 'Syslog',
+  520: 'RIP',
+  631: 'IPP',
+  1194: 'OpenVPN',
+  1900: 'SSDP',
+  4500: 'IPsec-NAT',
+  5060: 'SIP',
+  5353: 'mDNS',
+  11211: 'Memcached',
+};
+
+export const COMMON_UDP_PORTS = Object.keys(UDP_SERVICES).map(Number);
+
+/** Service-specific UDP probe payloads to elicit replies without authentication */
+const DEFAULT_UDP_PROBE = Buffer.from([0x00]);
+const UDP_PROBES = {
+  53: Buffer.from('0000010000010000000000000377777706676f6f676c6503636f6d0000010001', 'hex'), // DNS A query
+  123: Buffer.concat([Buffer.from([0x1b]), Buffer.alloc(47)]), // NTP client request
+  161: Buffer.from('302602010004067075626c6963a019020101020100020100300e300c06082b060102010101000500', 'hex'), // SNMP get sysDescr
+  1900: Buffer.from('M-SEARCH * HTTP/1.1\r\nHOST:239.255.255.250:1900\r\nMAN:"ssdp:discover"\r\nMX:1\r\nST:ssdp:all\r\n\r\n'),
+  5353: Buffer.from('000000000001000000000000095f7365727669636573075f646e732d7364045f756470056c6f63616c00000c0001', 'hex'), // mDNS PTR
+};
+
+/* ------------------------------------------------------------------ */
+/* IPv4 Calculations & Subnet Target Parsing (from NetLAN net-utils)  */
+/* ------------------------------------------------------------------ */
+
+export function ipToInt(ip) {
+  const p = String(ip || '').trim().split('.').map(Number);
+  if (p.length !== 4 || p.some(n => Number.isNaN(n) || n < 0 || n > 255)) {
+    throw new Error(`Invalid IPv4 address: ${ip}`);
+  }
+  return ((p[0] << 24) >>> 0) + (p[1] << 16) + (p[2] << 8) + p[3];
+}
+
+export function intToIp(n) {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+}
+
+export function parseTargets(input) {
+  const raw = String(input || '').trim();
+  if (!raw) throw new Error('Empty target');
+
+  if (raw.includes('-') && !raw.includes('/')) {
+    const [a, b] = raw.split('-').map(s => s.trim());
+    const start = ipToInt(a);
+    const end = ipToInt(b);
+    if (end < start) throw new Error('Range end is before start');
+    const count = end - start + 1;
+    if (count > MAX_HOSTS) throw new Error(`Range too large: ${count} hosts (max ${MAX_HOSTS})`);
+    return { cidr: raw, first: start, last: end, count };
+  }
+
+  const [ip, bitsStr] = raw.split('/');
+  const bits = bitsStr === undefined ? 32 : parseInt(bitsStr, 10);
+  if (Number.isNaN(bits) || bits < 0 || bits > 32) throw new Error(`Invalid prefix /${bitsStr}`);
+
+  const ipInt = ipToInt(ip);
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  const network = (ipInt & mask) >>> 0;
+  const broadcast = (network | (~mask >>> 0)) >>> 0;
+
+  let first = network;
+  let last = broadcast;
+  if (bits <= 30) {
+    first = (network + 1) >>> 0;
+    last = (broadcast - 1) >>> 0;
+  }
+  const count = last - first + 1;
+  if (count > MAX_HOSTS) throw new Error(`Subnet too large: ${count} hosts (max ${MAX_HOSTS})`);
+  return { cidr: `${intToIp(network)}/${bits}`, first, last, count };
+}
+
+export function* iterateHosts(targets) {
+  for (let n = targets.first; n <= targets.last; n++) {
+    yield intToIp(n >>> 0);
+  }
+}
+
+export function expandTargets(input) {
+  const specs = String(input || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!specs.length) throw new Error('Empty target');
+
+  const seen = new Set();
+  const ips = [];
+  for (const spec of specs) {
+    const t = parseTargets(spec);
+    for (const ip of iterateHosts(t)) {
+      if (!seen.has(ip)) {
+        seen.add(ip);
+        ips.push(ip);
+      }
+    }
+  }
+  ips.sort((a, b) => ipToInt(a) - ipToInt(b));
+  return { ips, count: ips.length };
+}
+
+export async function resolveTargets(target) {
+  const specs = String(target || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!specs.length) throw new Error('Empty target');
+
+  const parts = [];
+  const labels = [];
+  for (const spec of specs) {
+    if (/[a-z]/i.test(spec)) {
+      try {
+        const lookup = await dns.lookup(spec);
+        parts.push(lookup.address);
+        labels.push(`${spec} (${lookup.address})`);
+      } catch {
+        throw new Error(`Could not resolve hostname: ${spec}`);
+      }
+    } else {
+      parts.push(spec);
+      labels.push(spec);
+    }
+  }
+  return { target: parts.join(', '), label: labels.join(', ') };
+}
+
+/* ------------------------------------------------------------------ */
+/* Default Gateway & Routing Detection (from NetLAN discovery)         */
+/* ------------------------------------------------------------------ */
+
+export async function getDefaultRoute() {
+  try {
+    if (PLATFORM === 'win32') {
+      const { stdout } = await execAsync('route print 0.0.0.0');
+      // Format in route print:
+      // 0.0.0.0          0.0.0.0      192.168.0.1    192.168.0.187     50
+      const lines = stdout.split('\n');
+      for (const line of lines) {
+        const match = line.trim().match(/^0\.0\.0\.0\s+0\.0\.0\.0\s+([0-9.]+)\s+([0-9.]+)/i);
+        if (match) {
+          return { gateway: match[1], ifaceIp: match[2] };
+        }
+      }
+    } else if (PLATFORM === 'darwin') {
+      const { stdout } = await execAsync('route -n get default');
+      const gw = stdout.match(/gateway:\s*([0-9.]+)/i);
+      const iface = stdout.match(/interface:\s*(\S+)/i);
+      return { gateway: gw ? gw[1] : null, iface: iface ? iface[1] : null };
+    } else {
+      // Linux
+      const { stdout } = await execAsync('ip route show default');
+      const gw = stdout.match(/via\s+([0-9.]+)/i);
+      const dev = stdout.match(/dev\s+(\S+)/i);
+      return { gateway: gw ? gw[1] : null, iface: dev ? dev[1] : null };
+    }
+  } catch {
+    // fallback
+  }
+  return { gateway: null, iface: null };
+}
+
+/* ------------------------------------------------------------------ */
+/* Active ICMP Ping Prober (from NetLAN discovery)                    */
+/* ------------------------------------------------------------------ */
+
+export function ping(ip, timeoutMs = 800) {
+  let args;
+  if (PLATFORM === 'win32') {
+    args = ['-n', '1', '-w', String(timeoutMs), ip];
+  } else if (PLATFORM === 'darwin') {
+    args = ['-c', '1', '-t', String(Math.max(1, Math.round(timeoutMs / 1000))), ip];
+  } else {
+    args = ['-c', '1', '-W', String(Math.max(1, Math.round(timeoutMs / 1000))), ip];
+  }
+
+  return new Promise((resolve) => {
+    execFile('ping', args, { timeout: timeoutMs + 1200, windowsHide: true }, (err, stdout) => {
+      if (err || !stdout) return resolve({ alive: false, rtt: null });
+      const m = /time[=<]\s*([\d.]+)\s*ms/i.exec(stdout);
+      resolve({ alive: true, rtt: m ? parseFloat(m[1]) : null });
+    });
+  });
+}
+
+export async function pingAlive(ip, timeoutMs = 800, attempts = 2) {
+  let last = { alive: false, rtt: null };
+  for (let i = 0; i < attempts; i++) {
+    last = await ping(ip, timeoutMs);
+    if (last.alive) return last;
+  }
+  return last;
+}
+
+/* ------------------------------------------------------------------ */
+/* Network Interfaces & ARP Table Discovery                           */
+/* ------------------------------------------------------------------ */
+
 export function getLocalInterfaces() {
   const ifaces = os.networkInterfaces();
   const results = [];
@@ -62,21 +309,15 @@ export function getLocalInterfaces() {
   return results;
 }
 
-/**
- * Parses OS ARP cache table (`arp -a`) and returns discovered local network devices.
- */
 export async function getArpTable() {
   try {
     const { stdout } = await execAsync('arp -a');
     return parseArpOutput(stdout);
-  } catch (err) {
+  } catch {
     return [];
   }
 }
 
-/**
- * Parse cross-platform `arp -a` output (Windows, Linux, macOS).
- */
 export function parseArpOutput(output) {
   const lines = output.split('\n');
   const devices = [];
@@ -87,15 +328,12 @@ export function parseArpOutput(output) {
     const line = rawLine.trim();
     if (!line) continue;
 
-    // Windows interface header: "Interface: 192.168.1.10 --- 0x11"
     const ifaceMatch = line.match(/Interface:\s*([0-9.]+)/i);
     if (ifaceMatch) {
       currentInterface = ifaceMatch[1];
       continue;
     }
 
-    // Windows ARP entry: "192.168.1.1        00-11-22-33-44-55     dynamic"
-    // Linux/macOS ARP entry: "? (192.168.1.1) at 00:11:22:33:44:55 on en0 ifscope [ethernet]"
     const winMatch = line.match(/^([0-9]{1,3}(?:\.[0-9]{1,3}){3})\s+([0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2})\s+(\w+)/i);
     const nixMatch = line.match(/\(?([0-9]{1,3}(?:\.[0-9]{1,3}){3})\)?\s+(?:at\s+)?([0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2}[-:][0-9a-fA-F]{2})/i);
 
@@ -105,7 +343,6 @@ export function parseArpOutput(output) {
       const mac = normalizeMac(match[2]);
       const type = winMatch ? winMatch[3] : 'dynamic';
 
-      // Skip broadcast or loopback ARP entries
       if (ip.endsWith('.255') || ip.startsWith('224.') || ip.startsWith('239.') || mac.toLowerCase() === 'ff:ff:ff:ff:ff:ff') {
         continue;
       }
@@ -129,20 +366,36 @@ export function parseArpOutput(output) {
   return devices;
 }
 
-/**
- * Scans a single TCP port on a target host.
- */
-export function checkTcpPort(host, port, timeoutMs = 800) {
-  return new Promise(resolve => {
+/* ------------------------------------------------------------------ */
+/* TCP & UDP Port Probing with Banners                                */
+/* ------------------------------------------------------------------ */
+
+export function checkTcpPort(host, port, timeoutMs = 700) {
+  return new Promise((resolve) => {
     const started = Date.now();
     const socket = new net.Socket();
     let banner = '';
+    let settled = false;
+
+    const finish = (open) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      const latencyMs = Date.now() - started;
+      resolve({
+        port,
+        proto: 'tcp',
+        open,
+        latencyMs,
+        service: TCP_SERVICES[port] || 'Custom',
+        banner: banner.trim().slice(0, 150) || null,
+      });
+    };
 
     socket.setTimeout(timeoutMs);
 
     socket.on('connect', () => {
-      const latencyMs = Date.now() - started;
-      // Send small probe to elicit banner
+      // Elicit banner on common protocols
       try {
         if (port === 80 || port === 8080 || port === 3000 || port === 5000) {
           socket.write('HEAD / HTTP/1.0\r\n\r\n');
@@ -151,69 +404,103 @@ export function checkTcpPort(host, port, timeoutMs = 800) {
         }
       } catch { /* ignore */ }
 
-      setTimeout(() => {
-        socket.destroy();
-        resolve({
-          port,
-          open: true,
-          latencyMs,
-          banner: banner.trim().slice(0, 150) || null,
-        });
-      }, 100);
+      setTimeout(() => finish(true), 80);
     });
 
-    socket.on('data', data => {
+    socket.on('data', (data) => {
       banner += data.toString('utf8', 0, Math.min(data.length, 256));
+      finish(true);
     });
 
-    socket.on('timeout', () => {
-      socket.destroy();
-      resolve({ port, open: false, error: 'TIMEOUT' });
-    });
-
-    socket.on('error', err => {
-      socket.destroy();
-      resolve({ port, open: false, error: err.code });
-    });
+    socket.on('timeout', () => finish(false));
+    socket.on('error', () => finish(false));
 
     try {
       socket.connect(port, host);
     } catch {
-      resolve({ port, open: false, error: 'CONNECT_ERR' });
+      finish(false);
     }
   });
 }
 
-/**
- * Scans multiple TCP ports on a host in parallel.
- */
-export async function scanHostPorts(host, portList = COMMON_PORTS.map(p => p.port), timeoutMs = 800, concurrency = 20) {
-  const results = [];
-  const queue = [...portList];
-
-  const worker = async () => {
-    while (queue.length > 0) {
-      const port = queue.shift();
-      const res = await checkTcpPort(host, port, timeoutMs);
-      if (res.open) {
-        const known = COMMON_PORTS.find(p => p.port === port);
-        results.push({
-          ...res,
-          service: known ? known.service : 'Custom',
-        });
-      }
+export function checkUdpPort(host, port, timeoutMs = 900) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    let client;
+    try {
+      client = dgram.createSocket('udp4');
+    } catch {
+      return resolve({ port, proto: 'udp', open: false, service: UDP_SERVICES[port] || 'UDP' });
     }
-  };
 
-  const pool = Array.from({ length: Math.min(concurrency, portList.length) }, () => worker());
-  await Promise.all(pool);
+    let settled = false;
+    const finish = (open, banner = null) => {
+      if (settled) return;
+      settled = true;
+      try { client.close(); } catch { /* ignore */ }
+      const latencyMs = Date.now() - started;
+      resolve({
+        port,
+        proto: 'udp',
+        open,
+        latencyMs,
+        service: UDP_SERVICES[port] || 'UDP',
+        banner,
+      });
+    };
+
+    const timer = setTimeout(() => finish(false), timeoutMs);
+
+    client.on('message', (msg) => {
+      clearTimeout(timer);
+      const snippet = msg.toString('utf8', 0, Math.min(msg.length, 64)).replace(/[^\x20-\x7E]/g, '.');
+      finish(true, snippet || null);
+    });
+
+    client.on('error', () => {
+      clearTimeout(timer);
+      finish(false);
+    });
+
+    const probe = UDP_PROBES[port] || DEFAULT_UDP_PROBE;
+    try {
+      client.send(probe, port, host, (err) => {
+        if (err) finish(false);
+      });
+    } catch {
+      finish(false);
+    }
+  });
+}
+
+export async function scanHostPorts(host, tcpPorts = FAST_TCP_PORTS, udpPorts = [], timeoutMs = 700, concurrency = 25) {
+  const results = [];
+  const tcpQueue = [...tcpPorts];
+  const udpQueue = [...udpPorts];
+
+  // TCP worker pool
+  const tcpWorkers = Array.from({ length: Math.min(concurrency, tcpQueue.length || 1) }, async () => {
+    while (tcpQueue.length > 0) {
+      const port = tcpQueue.shift();
+      const res = await checkTcpPort(host, port, timeoutMs);
+      if (res.open) results.push(res);
+    }
+  });
+
+  // UDP worker pool
+  const udpWorkers = Array.from({ length: Math.min(10, udpQueue.length || 1) }, async () => {
+    while (udpQueue.length > 0) {
+      const port = udpQueue.shift();
+      const res = await checkUdpPort(host, port, timeoutMs + 200);
+      if (res.open) results.push(res);
+    }
+  });
+
+  await Promise.all([...tcpWorkers, ...udpWorkers]);
   results.sort((a, b) => a.port - b.port);
   return results;
 }
 
-/**
- * Resolves reverse DNS / hostname if possible.
- */
 export async function resolveHostname(ip) {
   try {
     const hostnames = await dns.reverse(ip);
@@ -224,56 +511,241 @@ export async function resolveHostname(ip) {
 }
 
 /**
- * Run a full local network discovery scan:
- * 1. Read ARP table + local interfaces
- * 2. Optional ping/probe on subnet
- * 3. Resolve hostnames and scan key ports
- * 4. Yield live progress via onEvent
+ * High-performance worker pool with bounded concurrency
  */
-export async function runNetworkDiscovery({ subnet = null, ports = null, onEvent = () => {} } = {}) {
-  onEvent({ type: 'status', message: 'Reading local network interfaces and ARP table…' });
-  const interfaces = getLocalInterfaces();
-  const devices = await getArpTable();
+export async function pool(items, concurrency, worker, onTick) {
+  const queue = items.slice();
+  let active = 0;
+  let done = 0;
+  return new Promise((resolve) => {
+    if (queue.length === 0) return resolve();
+    const next = () => {
+      while (active < concurrency && queue.length) {
+        const item = queue.shift();
+        active++;
+        Promise.resolve(worker(item))
+          .catch(() => {})
+          .finally(() => {
+            active--;
+            done++;
+            if (onTick) onTick(done);
+            if (queue.length || active) next();
+            else resolve();
+          });
+      }
+    };
+    next();
+  });
+}
 
-  // Add loopback / local interface host device if not present
+/* ------------------------------------------------------------------ */
+/* Full Network Discovery & Port Mapper Engine                        */
+/* ------------------------------------------------------------------ */
+
+export async function runNetworkDiscovery({
+  subnet = null,
+  mode = 'fast', // 'fast' | 'full' | 'custom'
+  customTcp = null,
+  customUdp = null,
+  pingTimeout = 800,
+  portTimeout = 700,
+  hostConcurrency = 50,
+  onEvent = () => {},
+} = {}) {
+  onEvent({ type: 'status', message: 'Analyzing network topology, default routes, and interfaces…' });
+
+  const interfaces = getLocalInterfaces();
+  const route = await getDefaultRoute();
+  const arpDevices = await getArpTable();
+
+  // Determine target IPs to sweep
+  let targetIps = [];
+  let sweepRangeLabel = subnet;
+
+  if (subnet) {
+    try {
+      const resolved = await resolveTargets(subnet);
+      const expanded = expandTargets(resolved.target);
+      targetIps = expanded.ips;
+      sweepRangeLabel = resolved.label;
+    } catch {
+      targetIps = [];
+    }
+  }
+
+  // If no subnet provided or empty, sweep the primary interface /24
+  if (!targetIps.length && interfaces.length > 0) {
+    const primary = interfaces.find(i => !i.internal && (route.ifaceIp ? i.address === route.ifaceIp : true)) || interfaces[0];
+    if (primary && primary.cidr) {
+      try {
+        const expanded = expandTargets(primary.cidr);
+        // Limit auto-sweep to 256 hosts for fast responsive discovery
+        targetIps = expanded.ips.slice(0, 256);
+        sweepRangeLabel = primary.cidr;
+      } catch { /* ignore */ }
+    }
+  }
+
+  // Map of discovered hosts keyed by IP
+  const hostsMap = new Map();
+
+  // Populate known local interfaces
   for (const iface of interfaces) {
-    if (!devices.some(d => d.ip === iface.address)) {
-      devices.unshift({
-        ip: iface.address,
-        mac: iface.mac,
-        type: 'local-interface',
-        interface: iface.name,
-        vendor: iface.vendor,
-        hostname: os.hostname(),
+    hostsMap.set(iface.address, {
+      ip: iface.address,
+      mac: iface.mac,
+      type: 'local-interface',
+      interface: iface.name,
+      vendor: iface.vendor,
+      hostname: os.hostname(),
+      isGateway: route.gateway === iface.address,
+      isSelf: true,
+      alive: true,
+      rtt: 0,
+      openPorts: [],
+      lastSeen: new Date().toISOString(),
+    });
+  }
+
+  // Populate known ARP entries
+  for (const dev of arpDevices) {
+    hostsMap.set(dev.ip, {
+      ...dev,
+      isGateway: route.gateway === dev.ip,
+      isSelf: false,
+      alive: true,
+      rtt: null,
+      openPorts: [],
+      lastSeen: new Date().toISOString(),
+    });
+  }
+
+  // Step 1: Active ICMP Ping Sweep across target IPs
+  if (targetIps.length > 0) {
+    onEvent({
+      type: 'status',
+      message: `Running active ICMP ping sweep across ${targetIps.length} target hosts (${sweepRangeLabel})…`,
+    });
+
+    await pool(targetIps, hostConcurrency, async (ip) => {
+      const pingRes = await pingAlive(ip, pingTimeout, 1);
+      if (pingRes.alive) {
+        let host = hostsMap.get(ip);
+        if (!host) {
+          host = {
+            ip,
+            mac: null,
+            type: 'ping-discovered',
+            interface: null,
+            vendor: 'Unknown',
+            hostname: null,
+            isGateway: route.gateway === ip,
+            isSelf: false,
+            alive: true,
+            rtt: pingRes.rtt,
+            openPorts: [],
+            lastSeen: new Date().toISOString(),
+          };
+          hostsMap.set(ip, host);
+        } else {
+          host.alive = true;
+          host.rtt = pingRes.rtt;
+        }
+        onEvent({ type: 'host_found', host });
+      }
+    }, (done) => {
+      onEvent({ type: 'sweep_progress', done, total: targetIps.length });
+    });
+  }
+
+  // Step 2: Re-read ARP table (ICMP ping responses populate OS ARP cache!)
+  const updatedArp = await getArpTable();
+  for (const dev of updatedArp) {
+    const existing = hostsMap.get(dev.ip);
+    if (existing) {
+      if (!existing.mac) existing.mac = dev.mac;
+      if (!existing.vendor || existing.vendor === 'Unknown') existing.vendor = dev.vendor;
+    } else {
+      hostsMap.set(dev.ip, {
+        ...dev,
+        isGateway: route.gateway === dev.ip,
+        isSelf: false,
+        alive: true,
+        rtt: null,
         openPorts: [],
         lastSeen: new Date().toISOString(),
       });
     }
   }
 
-  const scanPorts = Array.isArray(ports) && ports.length ? ports : [21, 22, 53, 80, 443, 445, 3000, 3306, 5432, 6379, 8080, 8443, 27017];
-  onEvent({ type: 'devices', devices, count: devices.length });
+  const liveHosts = Array.from(hostsMap.values());
+  // Sort with Gateway first, then Local Host, then IP order
+  liveHosts.sort((a, b) => {
+    if (a.isGateway) return -1;
+    if (b.isGateway) return 1;
+    if (a.isSelf) return -1;
+    if (b.isSelf) return 1;
+    return ipToInt(a.ip) - ipToInt(b.ip);
+  });
 
-  // Scan open ports and resolve hostnames for each discovered device
-  for (let i = 0; i < devices.length; i++) {
-    const device = devices[i];
-    onEvent({ type: 'progress', current: i + 1, total: devices.length, device: device.ip });
+  onEvent({
+    type: 'devices',
+    devices: liveHosts,
+    count: liveHosts.length,
+    gateway: route.gateway,
+  });
 
-    // Hostname lookup
-    if (!device.hostname) {
-      device.hostname = await resolveHostname(device.ip);
+  // Step 3: Layered Port Mapping (TCP + UDP)
+  let scanTcp = FAST_TCP_PORTS;
+  let scanUdp = [];
+
+  if (mode === 'full') {
+    scanTcp = Object.keys(TCP_SERVICES).map(Number);
+    scanUdp = COMMON_UDP_PORTS;
+  } else if (mode === 'custom') {
+    scanTcp = Array.isArray(customTcp) && customTcp.length ? customTcp : FAST_TCP_PORTS;
+    scanUdp = Array.isArray(customUdp) && customUdp.length ? customUdp : [];
+  }
+
+  onEvent({
+    type: 'status',
+    message: `Conducting layered port scanning (${scanTcp.length} TCP, ${scanUdp.length} UDP) across ${liveHosts.length} live hosts…`,
+  });
+
+  for (let i = 0; i < liveHosts.length; i++) {
+    const host = liveHosts[i];
+    onEvent({
+      type: 'progress',
+      current: i + 1,
+      total: liveHosts.length,
+      device: host.ip,
+    });
+
+    // Reverse DNS resolution
+    if (!host.hostname) {
+      host.hostname = await resolveHostname(host.ip);
     }
 
     // Port scan
     try {
-      device.openPorts = await scanHostPorts(device.ip, scanPorts, 600, 15);
+      host.openPorts = await scanHostPorts(host.ip, scanTcp, scanUdp, portTimeout, 20);
     } catch {
-      device.openPorts = [];
+      host.openPorts = [];
     }
 
-    onEvent({ type: 'device_updated', device });
+    onEvent({ type: 'device_updated', device: host });
   }
 
-  onEvent({ type: 'done', devices });
-  return { interfaces, devices };
+  onEvent({
+    type: 'done',
+    devices: liveHosts,
+    gateway: route.gateway,
+    summary: {
+      totalHosts: liveHosts.length,
+      onlineHosts: liveHosts.filter(h => h.alive).length,
+      gateway: route.gateway,
+    },
+  });
+
+  return { interfaces, devices: liveHosts, gateway: route.gateway };
 }
