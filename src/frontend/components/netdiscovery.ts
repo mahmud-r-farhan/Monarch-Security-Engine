@@ -2,6 +2,63 @@ import { $, escapeHtml, toast } from '../utils.js';
 import { state } from '../state.js';
 
 let networkSearchQuery = '';
+let liveSweepTimer: any = null;
+
+export async function triggerBackgroundSweep() {
+  try {
+    const res = await fetch('/api/netdiscovery/arp');
+    if (res.ok) {
+      const freshArp = await res.json();
+      if (Array.isArray(freshArp) && freshArp.length) {
+        state.discoveredDevices = freshArp;
+        renderDevicesTable();
+      }
+    }
+  } catch {}
+}
+
+export async function inspectHostDetailsModal(hostIp: string) {
+  const modal = $('host-inspect-modal');
+  const box = $('host-inspect-content');
+  if (!modal || !box) return;
+  modal.classList.remove('hidden');
+  box.innerHTML = '<div class="empty">⏳ Deep probing host & VPS details for ' + escapeHtml(hostIp) + '…</div>';
+
+  try {
+    const res = await fetch('/api/netdiscovery/inspect-host', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ host: hostIp }),
+    });
+    if (!res.ok) throw new Error('Inspection request failed');
+    const data = await res.json();
+
+    const portsList = (data.openPorts || []).map((p: any) =>
+      `<span class="badge-${p.proto || 'tcp'}">${p.port}/${p.proto || 'tcp'} ${escapeHtml(p.service || '')}</span>`
+    ).join(' ') || '<span style="color:var(--text-muted);font-size:11px;">No open ports observed</span>';
+
+    const webSection = data.webInfo
+      ? `<div class="seo-item"><div class="seo-k">Web Target</div><div class="seo-v">${escapeHtml(data.webInfo.url)} (${data.webInfo.status})</div></div>
+         <div class="seo-item"><div class="seo-k">Server Header</div><div class="seo-v">${escapeHtml(data.webInfo.server || 'None declared')}</div></div>`
+      : '<div class="seo-item"><div class="seo-k">Web Server</div><div class="seo-v">No HTTP/HTTPS server detected</div></div>';
+
+    box.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div class="seo-item"><div class="seo-k">Target IP / Host</div><div class="seo-v">${escapeHtml(data.ip)}</div></div>
+        <div class="seo-item"><div class="seo-k">Reverse Hostname</div><div class="seo-v">${escapeHtml(data.hostname || 'None resolved')}</div></div>
+        <div class="seo-item"><div class="seo-k">Inferred OS</div><div class="seo-v">${escapeHtml(data.osHint || 'Unknown')}</div></div>
+        <div class="seo-item"><div class="seo-k">Probe Latency</div><div class="seo-v">${Math.round(data.latencyMs || 0)}ms</div></div>
+        ${webSection}
+      </div>
+      <div class="box" style="margin-top:12px;">
+        <div class="box-head"><h3>Discovered Open Ports & Banners</h3></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;">${portsList}</div>
+      </div>
+    `;
+  } catch (err: any) {
+    box.innerHTML = '<div class="empty" style="color:var(--danger);">Failed to inspect host: ' + escapeHtml(err.message) + '</div>';
+  }
+}
 
 export function setupNetworkDiscovery() {
   loadNetworkInfo();
@@ -10,6 +67,26 @@ export function setupNetworkDiscovery() {
     const isCustom = (e.target as HTMLSelectElement).value === 'custom';
     const customRow = $('net-custom-row');
     if (customRow) customRow.classList.toggle('hidden', !isCustom);
+  });
+
+  const inspectClose = $('host-inspect-close');
+  if (inspectClose) inspectClose.addEventListener('click', () => $('host-inspect-modal').classList.add('hidden'));
+
+  const liveToggle = $('net-live-toggle') as HTMLButtonElement;
+  if (liveToggle) liveToggle.addEventListener('click', () => {
+    if (liveSweepTimer) {
+      clearInterval(liveSweepTimer);
+      liveSweepTimer = null;
+      liveToggle.textContent = '📡 Live Sweep: OFF';
+      liveToggle.style.color = '';
+      toast('Live monitoring sweep stopped', 'info');
+    } else {
+      liveSweepTimer = setInterval(() => triggerBackgroundSweep(), 15000);
+      liveToggle.textContent = '📡 Live Sweep: ON (15s)';
+      liveToggle.style.color = 'var(--success)';
+      toast('Live monitoring sweep active (updates every 15s)', 'success');
+      triggerBackgroundSweep();
+    }
   });
   const segSelect = $('net-segment-select') as HTMLSelectElement;
   if (segSelect) segSelect.addEventListener('change', (e) => {
@@ -150,7 +227,7 @@ export function renderDevicesTable() {
     const gwBadge = d.isGateway ? '<span style="margin-left:6px;padding:1px 6px;border-radius:6px;background:rgba(255,176,46,0.15);color:#ffb02e;font-size:10px;font-weight:700;">★ GW</span>' : '';
     const selfBadge = d.isSelf ? '<span style="margin-left:6px;padding:1px 6px;border-radius:6px;background:rgba(79,124,255,0.15);color:var(--primary);font-size:10px;font-weight:700;">SELF</span>' : '';
     const rttHtml = d.rtt!=null ? '<span class="badge-icmp">' + Math.round(d.rtt) + 'ms</span>' : (d.alive?'<span class="sev low" style="font-size:9px;">ONLINE</span>':'–');
-    html += '<tr><td><span style="font-weight:700;font-family:var(--font-mono);cursor:pointer;" onclick="copyToClipboard(\'' + escapeHtml(d.ip) + '\',\'IP copied\')">' + escapeHtml(d.ip) + '</span>' + gwBadge + selfBadge + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + (d.mac?escapeHtml(d.mac):'–') + '</td><td><span class="vendor">' + escapeHtml(d.vendor||'Unknown') + '</span></td><td style="font-size:11px;color:var(--text-soft);">' + escapeHtml(d.hostname||d.interface||'–') + '</td><td>' + rttHtml + '</td><td><div style="display:flex;flex-wrap:wrap;max-width:340px;">' + tcpHtml + udpHtml + noPorts + '</div></td><td style="text-align:right;"><button class="btn btn-ghost" style="height:26px;font-size:10px;" onclick="scanHostPortsModal(\'' + escapeHtml(d.ip) + '\')">Scan</button></td></tr>';
+    html += '<tr><td><span style="font-weight:700;font-family:var(--font-mono);cursor:pointer;" onclick="copyToClipboard(\'' + escapeHtml(d.ip) + '\',\'IP copied\')">' + escapeHtml(d.ip) + '</span>' + gwBadge + selfBadge + '</td><td style="font-family:var(--font-mono);font-size:11px;">' + (d.mac?escapeHtml(d.mac):'–') + '</td><td><span class="vendor">' + escapeHtml(d.vendor||'Unknown') + '</span></td><td style="font-size:11px;color:var(--text-soft);">' + escapeHtml(d.hostname||d.interface||'–') + '</td><td>' + rttHtml + '</td><td><div style="display:flex;flex-wrap:wrap;max-width:340px;">' + tcpHtml + udpHtml + noPorts + '</div></td><td style="text-align:right;"><button class="btn btn-ghost" style="height:26px;font-size:10px;margin-right:4px;" onclick="inspectHostDetailsModal(\'' + escapeHtml(d.ip) + '\')">Inspect</button></td></tr>';
   }
   tbody.innerHTML = html;
 }

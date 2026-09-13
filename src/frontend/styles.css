@@ -2,42 +2,44 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --bg: #0a0e13;
-  --bg-soft: #10151d;
-  --bg-elevated: #151c27;
-  --bg-card: #1a2332;
-  --bg-card-hover: #1f2a3a;
-  --bg-input: #0f141c;
-  --bg-overlay: rgba(10, 14, 19, 0.85);
-  --border: #222e41;
-  --border-soft: #1a2535;
-  --border-strong: #2d3d56;
-  --text: #e6edf3;
-  --text-soft: #9aa8bd;
-  --text-muted: #6b7a90;
-  --text-faint: #4a5870;
+  --bg: #070a0e;
+  --bg-soft: #0e131b;
+  --bg-elevated: rgba(18, 25, 36, 0.75);
+  --bg-card: rgba(24, 33, 48, 0.65);
+  --bg-card-hover: rgba(32, 45, 65, 0.85);
+  --bg-input: #0a0f16;
+  --bg-overlay: rgba(7, 10, 14, 0.88);
+  --border: #1e2c40;
+  --border-soft: #162234;
+  --border-strong: #2a3e59;
+  --border-glow: rgba(79, 124, 255, 0.25);
+  --text: #f0f4f9;
+  --text-soft: #a3b3cc;
+  --text-muted: #72849c;
+  --text-faint: #4e5f78;
   --primary: #4f7cff;
   --primary-hover: #3d6aff;
-  --primary-soft: rgba(79, 124, 255, 0.12);
-  --primary-ring: rgba(79, 124, 255, 0.35);
+  --primary-soft: rgba(79, 124, 255, 0.15);
+  --primary-ring: rgba(79, 124, 255, 0.4);
   --success: #1fcf7a;
-  --success-soft: rgba(31, 207, 122, 0.12);
+  --success-soft: rgba(31, 207, 122, 0.15);
   --warning: #ffb02e;
-  --warning-soft: rgba(255, 176, 46, 0.12);
+  --warning-soft: rgba(255, 176, 46, 0.15);
   --danger: #ff4d6a;
-  --danger-soft: rgba(255, 77, 106, 0.12);
+  --danger-soft: rgba(255, 77, 106, 0.15);
   --info: #38c5ff;
-  --info-soft: rgba(56, 197, 255, 0.12);
-  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.03) inset;
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04) inset;
-  --shadow-lg: 0 12px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
+  --info-soft: rgba(56, 197, 255, 0.15);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  --shadow-md: 0 6px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset;
+  --shadow-lg: 0 16px 40px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06) inset;
   --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
-  --radius-xl: 20px;
+  --radius-xl: 22px;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --backdrop-blur: blur(18px) saturate(1.3);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

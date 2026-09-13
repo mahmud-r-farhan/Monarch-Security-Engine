@@ -49,6 +49,31 @@ export function setupScanForm(switchViewFn: (name: string) => void) {
     state.filters.findingText = (e.target as HTMLInputElement).value;
     if ((state.currentScan as any)?.findings) renderFindings((state.currentScan as any).findings as any);
   });
+
+  const wpForm = $('wp-audit-form');
+  if (wpForm) wpForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const target = ( $('wp-target-input') as HTMLInputElement).value.trim();
+    if (!target) return;
+    const btn = $('wp-audit-btn') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = '⏳ Auditing…';
+    try {
+      const res = await fetch('/api/poke', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: target }),
+      });
+      if (res.ok) {
+        toast('Audited WP & admin resources for ' + target, 'success');
+      }
+    } catch (err: any) {
+      toast('WP Audit error: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🔍 Audit WP & Admin';
+    }
+  });
 }
 
 export function resetScanBtn() {

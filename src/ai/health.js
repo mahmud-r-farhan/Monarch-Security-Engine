@@ -71,12 +71,15 @@ async function probe(provider, { env, aiConfig, fetchImpl, deep }) {
       return base;
     }
 
-    // Cloud providers: hit their models listing endpoint with the configured key.
+    // Cloud & custom OpenAI-compatible providers: hit their models listing endpoint
     const key = cfg.apiKey;
-    if (!key) return { provider, ok: false, latencyMs: 0, error: 'No API key configured', hint: `Add a ${PROVIDER_ENV[provider]?.key || 'n'} API key or pick another provider.` };
+    if (provider !== 'openai-compatible' && !key) {
+      return { provider, ok: false, latencyMs: 0, error: 'No API key configured', hint: `Add a ${PROVIDER_ENV[provider]?.key || 'n'} API key or pick another provider.` };
+    }
 
     const endpoints = {
       openrouter: { url: 'https://openrouter.ai/api/v1/models', headers: { authorization: `Bearer ${key}`, 'HTTP-Referer': 'https://github.com/mahmud-r-farhan/Monarch-Security-Engine' } },
+      'openai-compatible': { url: `${(cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')}/models`, headers: key ? { authorization: `Bearer ${key}` } : {} },
       openai: { url: 'https://api.openai.com/v1/models', headers: { authorization: `Bearer ${key}` } },
       anthropic: { url: 'https://api.anthropic.com/v1/models', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' } },
       gemini: { url: `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`, headers: {} },
@@ -158,7 +161,7 @@ export async function checkActiveProvider({ env = process.env, aiConfig = null, 
 
 /** Probe every registered provider in parallel — powers the full status board. */
 export async function checkAllProviders({ env = process.env, aiConfig = null, fetchImpl = fetch, fresh = false } = {}) {
-  const jobs = ['openrouter', 'openai', 'anthropic', 'gemini', 'ollama', 'none'].map(p => checkProvider(p, { env, aiConfig, fetchImpl, fresh }));
+  const jobs = ['openrouter', 'openai-compatible', 'openai', 'anthropic', 'gemini', 'ollama', 'none'].map(p => checkProvider(p, { env, aiConfig, fetchImpl, fresh }));
   const results = await Promise.all(jobs);
   return {
     active: aiConfig?.provider && aiConfig.provider !== 'auto' ? aiConfig.provider : detectProvider(env),

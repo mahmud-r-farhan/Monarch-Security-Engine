@@ -1,4 +1,5 @@
 import { openrouter } from './openrouter.js';
+import { openaiCompatible } from './openaiCompatibleProvider.js';
 import { openai } from './openai.js';
 import { anthropic } from './anthropic.js';
 import { gemini } from './gemini.js';
@@ -13,6 +14,7 @@ import { ollama } from './ollama.js';
  */
 export const providers = {
   openrouter,
+  'openai-compatible': openaiCompatible,
   openai,
   anthropic,
   gemini,

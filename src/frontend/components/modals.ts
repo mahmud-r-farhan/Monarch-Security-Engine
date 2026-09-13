@@ -4,6 +4,7 @@ import { state } from '../state.js';
 /** Fallback suggestions — refreshed from /api/ai/providers when the modal opens. */
 const MODEL_DEFAULTS: Record<string, string> = {
   openrouter: 'openai/gpt-4o-mini',
+  'openai-compatible': 'gpt-4o-mini',
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-latest',
   gemini: 'gemini-1.5-flash',
@@ -12,7 +13,8 @@ const MODEL_DEFAULTS: Record<string, string> = {
 };
 
 const PROVIDER_HINTS: Record<string, string> = {
-  openrouter: 'One key, 300+ models at openrouter.ai/keys. Fast non-reasoning models (openai/gpt-4o-mini, llama-3.3, deepseek-chat) are the most reliable for JSON output.',
+  openrouter: 'One key, 300+ models at openrouter.ai/keys. Support for OpenRouter free models like meta-llama/llama-3.3-70b-instruct:free.',
+  'openai-compatible': 'Works with any OpenAI API wire-compatible endpoint (vLLM, LM Studio, LocalAI, Together, DeepSeek, Groq, etc.).',
   openai: 'Uses platform.openai.com keys. gpt-4o-mini is fast, cheap and dependable for structured output.',
   anthropic: 'Uses console.anthropic.com keys. claude-3-5-haiku is the fast tier; sonnet for deeper analysis.',
   gemini: 'Uses aistudio.google.com API keys. gemini-1.5-flash has a generous free tier.',
@@ -53,7 +55,17 @@ export function setupModals() {
       modelInput.value = MODEL_DEFAULTS[prov] || '';
     }
     $('ai-key-group').style.display = prov === 'ollama' || prov === 'none' ? 'none' : 'block';
-    $('ai-url-group').style.display = prov === 'ollama' ? 'block' : 'none';
+    $('ai-url-group').style.display = prov === 'ollama' || prov === 'openai-compatible' ? 'block' : 'none';
+    const urlLabel = $('ai-url-group')?.querySelector('label');
+    if (urlLabel) {
+      urlLabel.textContent = prov === 'openai-compatible' ? 'Custom API Base URL' : 'Ollama Server URL';
+    }
+    const urlHint = $('ai-url-hint');
+    if (urlHint) {
+      urlHint.textContent = prov === 'openai-compatible'
+        ? 'Base URL for OpenAI-compatible completions API (e.g. http://localhost:1234/v1, https://api.together.xyz/v1).'
+        : 'No API key needed — point at your local or remote Ollama server. Default: http://localhost:11434';
+    }
     const hint = $('ai-provider-hint');
     if (hint) { hint.textContent = PROVIDER_HINTS[prov] || ''; hint.style.display = prov === 'none' ? 'none' : 'block'; }
     renderProviderSuggestions(prov);
@@ -343,6 +355,7 @@ function hideHealthResult() {
 export function updateAiLabel() {
   const names: any = {
     openrouter: 'AI: OpenRouter',
+    'openai-compatible': 'AI: OpenAI-Compatible',
     openai: 'AI: OpenAI',
     anthropic: 'AI: Claude',
     gemini: 'AI: Gemini',

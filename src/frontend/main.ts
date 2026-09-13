@@ -2,7 +2,7 @@ import { state } from './state.js';
 import { $, $$, toast } from './utils.js';
 import { setupModals, updateAiLabel } from './components/modals.js';
 import { setupScanForm, renderWpAdmin, loadHistory, renderFullScan, renderHistory, setupHistory } from './components/scanner.js';
-import { setupNetworkDiscovery, loadNetworkInfo, renderDevicesTable } from './components/netdiscovery.js';
+import { setupNetworkDiscovery, loadNetworkInfo, renderDevicesTable, inspectHostDetailsModal } from './components/netdiscovery.js';
 import { setupMonitors, loadMonitors, renderMonitors, updateMonitorBadge } from './components/monitors.js';
 import { setupLoadTester } from './components/loadtester.js';
 import { setupInspector } from './components/inspector.js';
@@ -16,6 +16,7 @@ declare global {
   interface Window {
     loadScanFromHistory: (id: string) => Promise<void>;
     scanHostPortsModal: (host: string) => Promise<void>;
+    inspectHostDetailsModal: (host: string) => Promise<void>;
     copyToClipboard: (text: string, message?: string) => void;
     checkMonitorNow: (id: string) => Promise<void>;
     toggleMonitor: (id: string) => Promise<void>;
@@ -129,6 +130,8 @@ async function checkHealthAndConfig() {
 }
 
 // Window global assignments
+window.inspectHostDetailsModal = inspectHostDetailsModal;
+
 window.copyToClipboard = (text, message = 'Copied') => {
   navigator.clipboard.writeText(text).then(() => toast(message, 'success'));
 };

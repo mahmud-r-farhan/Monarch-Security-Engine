@@ -8,7 +8,7 @@
 [![Security](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/security.yml/badge.svg)](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/security.yml)
 [![Docker](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/docker.yml/badge.svg)](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/docker.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.0.0-4f7cff)
+![Version](https://img.shields.io/badge/version-2.2.0-4f7cff)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Zero native deps](https://img.shields.io/badge/native%20deps-0-success)
 
@@ -23,6 +23,13 @@
 > ⚠️ **Defensive Only** — Monarch is for **educational use, defensive research, and auditing systems you own or are explicitly authorised to test**. Scanning third-party targets without permission is illegal. Passive by design, but you remain responsible for where you point it.
 
 ---
+
+## ✨ What's New in v2.2
+
+- **🤖 OpenAI-Compatible AI Provider Setup & OpenRouter Free LLM Support** — Full support for OpenAI-wire compatible endpoints (vLLM, LM Studio, LocalAI, Together, DeepSeek) with configurable base URLs (`OPENAI_COMPATIBLE_BASE_URL` or UI input) and quick-select support for OpenRouter free models (`meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-chat-v3-0324:free`, `google/gemini-2.0-flash-exp:free`).
+- **📡 Enhanced NetLAN Network Operations & VPS Host Details** — Live background segment monitoring, host deep inspection (`/api/netdiscovery/inspect-host`), reverse DNS, MAC/vendor lookup, and web server/VPS details probe.
+- **🔒 Expanded WP & Admin Audit Suite** — On-demand WP & Admin audit form, probing for exposed admin portals, XML-RPC abuse, REST API user enumeration, author query leakage, debug log leaks (`/wp-content/debug.log`), backup configs (`/wp-config.php.bak`), and `phpinfo.php` exposures.
+- **🎨 Modern Dark Design System** — Refined glassmorphism styling, improved contrast, topbar/sidebar responsive updates, and glowing posture indicators.
 
 ## ✨ What's New in v2.1
 

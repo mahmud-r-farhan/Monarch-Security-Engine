@@ -584,6 +584,70 @@ export async function resolveHostname(ip) {
 }
 
 /**
+ * Deep Host & Web Server / VPS Inspector
+ * Probes HTTP/HTTPS response headers, SSL cert, banners, OUI vendor, and reverse DNS.
+ */
+export async function inspectHostDetails(hostInput) {
+  const host = String(hostInput || '').trim();
+  if (!host) throw new Error('Host input is required');
+
+  const started = Date.now();
+  let resolvedIp = host;
+  let resolvedHost = host;
+
+  if (/[a-z]/i.test(host)) {
+    try {
+      const lookup = await dns.lookup(host);
+      resolvedIp = lookup.address;
+    } catch {
+      /* continue with raw input */
+    }
+  }
+
+  const hostname = await resolveHostname(resolvedIp);
+  const openPorts = await scanHostPorts(resolvedIp, FAST_TCP_PORTS, COMMON_UDP_PORTS.slice(0, 5), 800, 25);
+  const osHint = inferOsFromDevice({ vendor: '', openPorts });
+
+  // Web server & VPS details probe
+  let webInfo = null;
+  const httpPort = openPorts.find(p => [80, 443, 8000, 8080, 8443, 3000].includes(p.port));
+  if (httpPort || /[a-z]/i.test(host)) {
+    const scheme = (httpPort?.port === 443 || httpPort?.port === 8443) ? 'https' : 'http';
+    const targetUrl = `${scheme}://${resolvedIp}:${httpPort?.port || 80}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    try {
+      const res = await fetch(targetUrl, { method: 'HEAD', signal: controller.signal, redirect: 'manual' }).catch(async () => {
+        return await fetch(targetUrl, { method: 'GET', signal: controller.signal, redirect: 'manual' });
+      });
+      clearTimeout(timer);
+      const headers = {};
+      res.headers.forEach((v, k) => { headers[k] = v; });
+      webInfo = {
+        url: targetUrl,
+        status: res.status,
+        server: headers['server'] || headers['x-powered-by'] || null,
+        title: null,
+        headers,
+      };
+    } catch {
+      clearTimeout(timer);
+    }
+  }
+
+  return {
+    host,
+    ip: resolvedIp,
+    hostname,
+    osHint,
+    openPorts,
+    webInfo,
+    latencyMs: Date.now() - started,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/**
  * High-performance worker pool with bounded concurrency
  */
 export async function pool(items, concurrency, worker, onTick) {

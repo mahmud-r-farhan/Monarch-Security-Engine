@@ -115,7 +115,7 @@ test('health check: none is trivially healthy, ollama lists models, failures car
   assert.ok(ollama.hint, 'expected an actionable hint for refused connection');
 
   const all = await checkAllProviders({ fresh: true });
-  assert.equal(all.providers.length, 6);
+  assert.equal(all.providers.length, 7);
   assert.ok(all.providers.every(p => 'ok' in p && 'checkedAt' in p));
 });
 

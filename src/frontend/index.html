@@ -182,14 +182,20 @@
 
     <!-- WP Admin -->
     <section class="view" id="view-wpadmin">
-      <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);"><h2 style="font-size:18px;font-weight:800;">🔒 WordPress, PHP & Admin Security</h2><p style="font-size:12.5px;color:var(--text-soft);">Detect exposed admin consoles, XML-RPC abuse, user enumeration</p></div>
+      <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);"><h2 style="font-size:18px;font-weight:800;">🔒 WordPress, PHP & Admin Security</h2><p style="font-size:12.5px;color:var(--text-soft);">Detect exposed admin consoles, XML-RPC abuse, user enumeration, debug logs & config leaks</p></div>
+      <div class="box" style="margin-bottom:16px;">
+        <form id="wp-audit-form" style="display:flex;gap:8px;align-items:center;">
+          <input id="wp-target-input" placeholder="https://example.com" required style="flex:1;height:36px;padding:0 12px;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--font-mono);">
+          <button type="submit" id="wp-audit-btn" class="btn btn-primary">🔍 Audit WP & Admin</button>
+        </form>
+      </div>
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
         <div class="stat"><div class="stat-lbl">WordPress Detection</div><div class="stat-val" id="wp-detected" style="font-size:16px;margin-top:6px;">–</div></div>
         <div class="stat"><div class="stat-lbl">XML-RPC</div><div class="stat-val" id="wp-xmlrpc" style="font-size:16px;margin-top:6px;">–</div></div>
         <div class="stat"><div class="stat-lbl">User Enumeration</div><div class="stat-val" id="wp-user-enum" style="font-size:16px;margin-top:6px;">–</div></div>
       </div>
       <div class="charts">
-        <div class="chart"><div class="chart-title">Admin Endpoints</div><div id="wp-endpoints-container"><div class="empty">Scan a target to probe admin panels</div></div></div>
+        <div class="chart"><div class="chart-title">Admin Endpoints & Config Leaks</div><div id="wp-endpoints-container"><div class="empty">Audit a target or run a scan to probe admin panels</div></div></div>
         <div class="chart"><div class="chart-title">Discovered Users</div><div id="wp-users-container"><div class="empty">Author enumeration results will appear here</div></div></div>
       </div>
     </section>
@@ -279,7 +285,18 @@
       </div>
       <div class="box" style="margin-bottom:16px;"><div class="box-head"><h3>Interfaces</h3><span class="badge" id="net-gateway-badge" style="display:none;">Gateway: –</span></div><div id="ifaces-list" class="ifaces"><div class="empty">Loading interfaces…</div></div></div>
       <div class="box">
-        <div class="box-head"><div style="display:flex;gap:8px;align-items:center;"><h3>Devices</h3><span class="badge" id="dev-count-badge">0 Hosts</span></div><div style="display:flex;gap:8px;align-items:center;"><input id="dev-search-input" placeholder="Filter IP, vendor…" style="width:180px;height:28px;padding:0 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;font-size:11px;"><button id="dev-export-csv" class="btn btn-ghost" style="height:28px;font-size:11px;">CSV</button><button id="dev-export-json" class="btn btn-ghost" style="height:28px;font-size:11px;">JSON</button></div></div>
+        <div class="box-head">
+          <div style="display:flex;gap:8px;align-items:center;">
+            <h3>Devices</h3>
+            <span class="badge" id="dev-count-badge">0 Hosts</span>
+            <button id="net-live-toggle" class="btn btn-ghost" style="height:26px;font-size:10px;margin-left:8px;" title="Toggle live monitoring background sweep">📡 Live Sweep: OFF</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input id="dev-search-input" placeholder="Filter IP, vendor, VPS…" style="width:180px;height:28px;padding:0 8px;background:var(--bg-input);border:1px solid var(--border);border-radius:6px;font-size:11px;">
+            <button id="dev-export-csv" class="btn btn-ghost" style="height:28px;font-size:11px;">CSV</button>
+            <button id="dev-export-json" class="btn btn-ghost" style="height:28px;font-size:11px;">JSON</button>
+          </div>
+        </div>
         <div class="table-wrap"><table class="table"><thead><tr><th>IP</th><th>MAC</th><th>Vendor</th><th>Hostname</th><th>Latency</th><th>Services</th><th>Action</th></tr></thead><tbody id="devices-body"><tr><td colspan="7" class="empty">Configure subnet and start discovery</td></tr></tbody></table></div>
       </div>
     </section>
@@ -390,10 +407,10 @@
     <div class="modal-body">
       <p class="modal-desc">Monarch runs 100% offline with heuristic rules. Configure OpenRouter (recommended), OpenAI, Anthropic, or Gemini for AI-powered remediation. Keys are stored in session only.</p>
       <form id="ai-config-form" style="display:flex;flex-direction:column;gap:14px;">
-        <div class="form-group"><label>Provider</label><select id="ai-provider-select" class="select"><option value="openrouter">OpenRouter (Multi-Model)</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option><option value="ollama">Ollama (Local / Self-hosted)</option><option value="none">Offline Heuristic</option></select></div>
+        <div class="form-group"><label>Provider</label><select id="ai-provider-select" class="select"><option value="openrouter">OpenRouter (Multi-Model / Free Models)</option><option value="openai-compatible">OpenAI-Compatible (Custom Endpoint)</option><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="gemini">Gemini</option><option value="ollama">Ollama (Local / Self-hosted)</option><option value="none">Offline Heuristic</option></select></div>
         <div id="ai-provider-hint" class="provider-hint"></div>
         <div id="ai-provider-status" class="provider-status hidden"></div>
-        <div class="form-group" id="ai-url-group" style="display:none;"><label>Ollama Server URL</label><input id="ai-url-input" placeholder="http://localhost:11434" spellcheck="false"><div style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">No API key needed — point at your local or remote Ollama server. Default: http://localhost:11434</div></div>
+        <div class="form-group" id="ai-url-group" style="display:none;"><label>Ollama Server URL</label><input id="ai-url-input" placeholder="http://localhost:11434" spellcheck="false"><div id="ai-url-hint" style="font-size:10.5px;color:var(--text-muted);margin-top:4px;">No API key needed — point at your local or remote Ollama server. Default: http://localhost:11434</div></div>
         <div class="form-group" id="ai-key-group">
           <label>API Key</label>
           <div class="key-wrap">
@@ -442,6 +459,15 @@
         <div class="form-group"><label>Notifications</label><select id="mon-notify" class="select"><option value="all" selected>All events (down, slow, recovery)</option><option value="changes">Only status changes</option><option value="down">Only when down</option><option value="none">Never</option></select></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="mon-cancel-btn">Cancel</button><button type="submit" class="btn btn-primary">Create</button></div>
       </form>
+    </div>
+  </div>
+</div>
+
+<div class="backdrop hidden" id="host-inspect-modal">
+  <div class="modal">
+    <div class="modal-head"><div class="modal-title">🌐 Host & VPS Details Inspection</div><button class="modal-close" id="host-inspect-close">×</button></div>
+    <div class="modal-body" id="host-inspect-content">
+      <div class="empty">Loading host details…</div>
     </div>
   </div>
 </div>
