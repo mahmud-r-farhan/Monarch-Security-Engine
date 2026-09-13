@@ -701,7 +701,7 @@ app.get('*', (req, res) => {
 /* ------------------------------------------------------------------ */
 
 app.use((err, req, res, next) => {
-  console.error(`[Error] ${req.method} ${req.path}:`, err.message);
+  console.error('[Error] %s %s: %s', req.method, req.path, err.message);
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
