@@ -93,9 +93,10 @@ export interface UptimeMonitor {
 }
 
 export interface AiConfig {
-  provider: 'openrouter' | 'openai' | 'anthropic' | 'gemini' | 'none';
+  provider: 'openrouter' | 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'none';
   apiKey: string;
   model?: string;
+  baseUrl?: string;
 }
 
 export interface AppState {

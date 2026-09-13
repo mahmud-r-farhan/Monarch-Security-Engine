@@ -71,7 +71,7 @@ It is the reference for the rules in [CONTRIBUTING.md](../CONTRIBUTING.md) — n
         │    ├── checks/seo.js
         │    ├── checks/apisecurity.js
         │    ├── checks/wpadmin.js
-        │    └── ai/insights.js
+        │    └── ai/insights.js   (providers: openrouter · openai · anthropic · gemini · ollama · heuristic)
         │
         ├── scanRegistry.js
         ├── report/markdown.js ◀── report/html.js
@@ -139,7 +139,7 @@ monitorService / notificationService / wsServer for boot-time init.
 | `modules/ws.js` | WebSocket server: subscriptions, heartbeat, broadcast | `wsServer` |
 | `modules/powerup.js` | Optional bridge to Python/Go microservices; graceful degradation when offline | `checkPowerUpServices` |
 | `middleware/rateLimiter.js` | In-memory sliding-window limiter (scan 10/min, api 120/min, discovery 20/min) | `scanLimiter`, `apiLimiter`, `discoveryLimiter` |
-| `ai/insights.js` | AI remediation via OpenRouter/OpenAI/Anthropic/Gemini (plain fetch) with deterministic heuristic fallback | `generateInsights`, `detectProvider`, `DEFAULT_MODEL` |
+| `ai/insights.js` | AI remediation via OpenRouter/OpenAI/Anthropic/Gemini/Ollama (plain fetch) with deterministic heuristic fallback; `normalizeOllamaBaseUrl` validates user-supplied server URLs | `generateInsights`, `detectProvider`, `DEFAULT_MODEL`, `PROVIDERS`, `normalizeOllamaBaseUrl` |
 | `report/*.js` | Export renderers: markdown, standalone HTML, SARIF 2.1.0 | `renderMarkdown`, `renderHtml`, `renderSarif` |
 | `env.js` | `.env` loader | `loadEnv` |
 | `index.js` | Programmatic API surface for library consumers | re-exports `runScan`, checks, crawl, AI, report renderers |

@@ -114,9 +114,32 @@ npm start
    - **OpenAI**: `gpt-4o-mini`
    - **Anthropic**: `claude-3-5-haiku-latest`
    - **Gemini**: `gemini-1.5-flash`
+   - **Ollama** (NEW): Local / self-hosted models — **no API key needed**, see below
    - **Offline**: No key, heuristic rules
 3. Paste API key (stored in session only, never persisted to disk)
 4. Save
+
+### Ollama (local / self-hosted AI)
+
+Run the AI analysis fully offline with your own models:
+
+```bash
+# 1. Install Ollama (https://ollama.com) and pull a model
+ollama pull llama3.2          # default; qwen2.5:7b, mistral, gemma2 also work well
+
+# 2. Serve (listens on http://localhost:11434 by default)
+ollama serve
+
+# 3. Point Monarch at it — either via env before starting:
+OLLAMA_BASE_URL=http://localhost:11434 OLLAMA_MODEL=llama3.2 npm start
+# …or at runtime in the UI: AI pill → Provider "Ollama (Local)" → server URL + model → Save
+```
+
+- **Server URL** accepts `localhost:11434`, `http://192.168.1.20:11434`, `https://ollama.mycompany.com` — scheme and `/api` suffixes are normalized automatically; `http(s)` only
+- Choose any model you have pulled (`ollama list`); larger models (7B+) give noticeably better remediation plans
+- All data stays on your machine — ideal for scanning internal systems where nothing may leave the network
+- Monarch talks to Ollama's native `/api/chat` with `format: json`, so the remediation plan is parsed deterministically; if the model misbehaves, the offline heuristic analyst takes over automatically
+- Works with Ollama behind a reverse proxy or on another machine — the URL is fully configurable
 
 ## Exports
 
@@ -162,6 +185,10 @@ curl -X POST http://localhost:3000/api/speed/status -H "content-type: applicatio
 # Create a monitor with notification preference (NEW v2.1)
 curl -X POST http://localhost:3000/api/monitors -H "content-type: application/json" \
   -d '{"name":"Prod API","url":"https://api.example.com/health","intervalSeconds":60,"notifyOn":"down"}'
+
+# Point AI at a local Ollama server (NEW)
+curl -X POST http://localhost:3000/api/config -H "content-type: application/json" \
+  -d '{"provider":"ollama","model":"llama3.2","baseUrl":"http://localhost:11434"}'
 
 # List notifications / unread count (NEW v2.1)
 curl "http://localhost:3000/api/notifications?limit=20"

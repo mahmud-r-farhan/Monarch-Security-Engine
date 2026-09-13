@@ -3,7 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import fsSync from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { detectProvider, DEFAULT_MODEL } from './ai/insights.js';
+import { detectProvider, DEFAULT_MODEL, PROVIDERS, normalizeOllamaBaseUrl } from './ai/insights.js';
 import { loadEnv } from './env.js';
 
 import { wsServer } from './modules/ws.js';
@@ -98,8 +98,10 @@ app.use(express.static(staticDir, {
   lastModified: true,
 }));
 
-// Runtime AI configuration lives on app.locals so route modules can read it
+// Runtime AI configuration lives on app.locals so route modules can read it.
+// baseUrl holds the Ollama endpoint when the ollama provider is selected.
 app.locals.runtimeAiConfig = null;
+app.locals.ollamaBaseUrl = normalizeOllamaBaseUrl(process.env.OLLAMA_BASE_URL || process.env.OLLAMA_HOST || '');
 
 /* ------------------------------------------------------------------ */
 /* Config & Health Endpoints                                          */
@@ -215,32 +217,42 @@ app.get('/api/config', (req, res) => {
     provider,
     model: app.locals.runtimeAiConfig?.model || process.env.AI_MODEL || DEFAULT_MODEL[provider] || '',
     hasApiKey: aiKeyConfigured(),
+    baseUrl: app.locals.ollamaBaseUrl || process.env.OLLAMA_BASE_URL || '',
     availableProviders: [
       { id: 'openrouter', name: 'OpenRouter (Default / Multi-Model)', defaultModel: DEFAULT_MODEL.openrouter },
       { id: 'openai', name: 'OpenAI (GPT-4o, GPT-4o-mini)', defaultModel: DEFAULT_MODEL.openai },
       { id: 'anthropic', name: 'Anthropic (Claude 3.5 Sonnet / Haiku)', defaultModel: DEFAULT_MODEL.anthropic },
       { id: 'gemini', name: 'Google Gemini (Gemini 1.5 Flash)', defaultModel: DEFAULT_MODEL.gemini },
+      { id: 'ollama', name: 'Ollama (Local / Self-hosted)', defaultModel: DEFAULT_MODEL.ollama },
       { id: 'none', name: 'Deterministic Heuristic (Offline / No Key)', defaultModel: 'monarch-rules-v1' },
     ],
   });
 });
 
 app.post('/api/config', (req, res) => {
-  const { provider, apiKey, model } = req.body || {};
-  if (provider && !['openrouter', 'openai', 'anthropic', 'gemini', 'none'].includes(provider)) {
+  const { provider, apiKey, model, baseUrl } = req.body || {};
+  if (provider && !PROVIDERS.includes(provider)) {
     return res.status(400).json({ error: 'Invalid provider' });
+  }
+  let ollamaBaseUrl = app.locals.ollamaBaseUrl;
+  if (provider === 'ollama' && baseUrl) {
+    try { ollamaBaseUrl = normalizeOllamaBaseUrl(baseUrl); } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
   }
   app.locals.runtimeAiConfig = {
     provider: provider || 'openrouter',
     apiKey: apiKey || '',
     model: model || DEFAULT_MODEL[provider] || '',
   };
+  if (provider === 'ollama') app.locals.ollamaBaseUrl = ollamaBaseUrl;
   res.json({
     ok: true,
     message: 'AI Configuration updated in session',
     provider: app.locals.runtimeAiConfig.provider,
     model: app.locals.runtimeAiConfig.model,
     hasApiKey: Boolean(app.locals.runtimeAiConfig.apiKey),
+    baseUrl: provider === 'ollama' ? app.locals.ollamaBaseUrl : undefined,
   });
 });
 

@@ -4,6 +4,7 @@ import { notificationService } from '../src/modules/notifications.js';
 import { analyzePageSpeed, quickStatusCheck } from '../src/modules/speed.js';
 import { monitorService } from '../src/modules/monitor.js';
 import { createServer } from 'node:http';
+import { normalizeOllamaBaseUrl } from '../src/ai/insights.js';
 
 test('notification service creates, lists, marks read and deletes', async () => {
   const created = await notificationService.notify({
@@ -85,4 +86,15 @@ test('page speed analyzer measures a local HTTP server and audits output', async
 
 test('page speed analyzer rejects invalid URLs', async () => {
   await assert.rejects(() => analyzePageSpeed('not a url'));
+});
+
+test('ollama base URL normalizer accepts valid inputs and rejects bad schemes', () => {
+  assert.equal(normalizeOllamaBaseUrl(''), 'http://localhost:11434');
+  assert.equal(normalizeOllamaBaseUrl('localhost:11434'), 'http://localhost:11434');
+  assert.equal(normalizeOllamaBaseUrl('http://localhost:11434/'), 'http://localhost:11434');
+  assert.equal(normalizeOllamaBaseUrl('https://ollama.corp.example'), 'https://ollama.corp.example');
+  assert.equal(normalizeOllamaBaseUrl('http://192.168.1.20:11434/api'), 'http://192.168.1.20:11434');
+  assert.throws(() => normalizeOllamaBaseUrl('ftp://bad'), /http:\/\/ or https:\/\//);
+  assert.throws(() => normalizeOllamaBaseUrl('javascript:alert(1)'));
+  assert.throws(() => normalizeOllamaBaseUrl('http://'));
 });

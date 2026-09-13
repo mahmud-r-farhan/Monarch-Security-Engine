@@ -26,6 +26,7 @@
 
 ## ✨ What's New in v2.1
 
+- **🦙 Ollama Provider (Local AI)** — Run AI remediation fully offline with your own models (`llama3.2`, `qwen2.5`, …). Choose via env (`OLLAMA_BASE_URL`/`OLLAMA_MODEL`) or the UI; no API key, data never leaves your machine
 - **⚡ Website & Page Speed Analyzer** — Real DNS/TCP/TLS/TTFB waterfall, page weight, compression & caching audits, resource-hint checks, weighted 0–100 score + grade, actionable advice
 - **🔔 Notification System** — Monitors emit site-status alerts (DOWN / SLOW / back LIVE) to an in-app notification center with bell dropdown, unread badge, toasts, and native browser notifications; per-monitor preferences (`all` / `changes` / `down` / `none`)
 - **🧩 Modular Backend** — The 719-line `server.js` monolith sliced into `src/routes/` components (`scans.js`, `monitors.js`, `tools.js`), a `scanRegistry.js` singleton, and slimmer service modules
@@ -184,7 +185,7 @@ go run services/go/main.go -server -port 5002
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | Dashboard port |
-| `AI_PROVIDER` | `openrouter` | `openrouter, openai, anthropic, gemini, none` |
+| `AI_PROVIDER` | `openrouter` | `openrouter, openai, anthropic, gemini, ollama, none` |
 | `OPENROUTER_API_KEY` | — | OpenRouter key |
 | `OPENROUTER_MODEL` | `deepseek/deepseek-r1-distill-qwen-7b` | Model |
 | `CRAWLER` | `fetch` | `fetch` or `playwright` |
@@ -194,6 +195,8 @@ go run services/go/main.go -server -port 5002
 | `PYTHON_SERVICE_URL` | `http://localhost:5001` | Python power-up URL |
 | `GO_SERVICE_URL` | `http://localhost:5002` | Go power-up URL |
 | `ALLOW_PRIVATE_TARGETS` | `true` | Allow RFC1918 scanning |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL (provider `ollama`) |
+| `OLLAMA_MODEL` | `llama3.2` | Ollama model — pull first with `ollama pull llama3.2` |
 
 ---
 
@@ -220,7 +223,7 @@ src/
 ├── engine/            # Crawler, scanner, scoring
 ├── modules/           # Speed, notifications, monitor, netdiscovery, TLS, recon, powerup
 ├── middleware/        # Rate limiting
-├── ai/                # OpenRouter, OpenAI, Anthropic, Gemini, heuristic
+├── ai/                # OpenRouter, OpenAI, Anthropic, Gemini, Ollama, heuristic
 ├── report/            # Markdown, HTML, SARIF
 ├── scanRegistry.js    # Scan state + disk persistence singleton
 ├── server.js          # Slim Express orchestrator

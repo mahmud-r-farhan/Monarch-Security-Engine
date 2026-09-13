@@ -11,50 +11,65 @@ export function setupModals() {
     ( $('ai-provider-select') as HTMLSelectElement).value = state.aiConfig.provider;
     ( $('ai-key-input') as HTMLInputElement).value = state.aiConfig.apiKey;
     ( $('ai-model-input') as HTMLInputElement).value = state.aiConfig.model || '';
+    ( $('ai-url-input') as HTMLInputElement).value = state.aiConfig.baseUrl || '';
+    updateProviderFields();
     $('ai-modal').classList.remove('hidden');
   });
 
   $('ai-modal-close').addEventListener('click', () => $('ai-modal').classList.add('hidden'));
 
-  $('ai-provider-select').addEventListener('change', (e) => {
-    const prov = (e.target as HTMLSelectElement).value;
+  const updateProviderFields = () => {
+    const prov = ( $('ai-provider-select') as HTMLSelectElement).value;
     const defaults: any = {
       openrouter: 'deepseek/deepseek-r1-distill-qwen-7b',
       openai: 'gpt-4o-mini',
       anthropic: 'claude-3-5-haiku-latest',
       gemini: 'gemini-1.5-flash',
+      ollama: 'llama3.2',
       none: 'monarch-rules-v1',
     };
     ( $('ai-model-input') as HTMLInputElement).value = defaults[prov] || '';
-    $('ai-key-group').style.display = prov === 'none' ? 'none' : 'block';
-  });
+    $('ai-key-group').style.display = prov === 'ollama' || prov === 'none' ? 'none' : 'block';
+    $('ai-url-group').style.display = prov === 'ollama' ? 'block' : 'none';
+  };
+
+  $('ai-provider-select').addEventListener('change', updateProviderFields);
 
   $('ai-config-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const provider = ( $('ai-provider-select') as HTMLSelectElement).value as any;
     const apiKey = ( $('ai-key-input') as HTMLInputElement).value.trim();
     const model = ( $('ai-model-input') as HTMLInputElement).value.trim();
-    state.aiConfig = { provider, apiKey, model };
+    const baseUrl = ( $('ai-url-input') as HTMLInputElement).value.trim();
+    state.aiConfig = { provider, apiKey, model, baseUrl };
     sessionStorage.setItem('monarch_provider', provider);
     sessionStorage.setItem('monarch_model', model);
 
-    await fetch('/api/config', {
+    const res = await fetch('/api/config', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(state.aiConfig),
-    }).catch(() => {});
+    }).catch(() => null);
+
+    if (res && !res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Configuration rejected' }));
+      toast('Failed: ' + (err.error || 'invalid config'), 'error');
+      return;
+    }
 
     updateAiLabel();
     $('ai-modal').classList.add('hidden');
-    toast('AI configuration saved', 'success');
+    toast(provider === 'ollama' ? 'AI configuration saved — using Ollama at ' + (baseUrl || 'http://localhost:11434') : 'AI configuration saved', 'success');
   });
 
   $('ai-clear-btn').addEventListener('click', async () => {
-    state.aiConfig = { provider: 'none', apiKey: '', model: 'monarch-rules-v1' };
+    state.aiConfig = { provider: 'none', apiKey: '', model: 'monarch-rules-v1', baseUrl: '' };
     sessionStorage.setItem('monarch_provider', 'none');
     ( $('ai-provider-select') as HTMLSelectElement).value = 'none';
     ( $('ai-key-input') as HTMLInputElement).value = '';
     ( $('ai-model-input') as HTMLInputElement).value = 'monarch-rules-v1';
+    ( $('ai-url-input') as HTMLInputElement).value = '';
+    updateProviderFields();
 
     await fetch('/api/config', {
       method: 'POST',
@@ -89,6 +104,7 @@ export function updateAiLabel() {
     openai: 'AI: OpenAI',
     anthropic: 'AI: Claude',
     gemini: 'AI: Gemini',
+    ollama: 'AI: Ollama (Local)',
     none: 'Offline',
   };
   const label = $('ai-config-label');

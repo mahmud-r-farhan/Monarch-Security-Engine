@@ -12,6 +12,7 @@ export function detectProvider(env = process.env) {
   if (env.ANTHROPIC_API_KEY) return 'anthropic';
   if (env.OPENAI_API_KEY) return 'openai';
   if (env.GEMINI_API_KEY) return 'gemini';
+  if (env.OLLAMA_BASE_URL || env.OLLAMA_HOST) return 'ollama';
   return 'none';
 }
 
@@ -28,6 +29,7 @@ export async function generateInsights(scan, { env = process.env, fetchImpl = fe
       else if (p === 'gemini') effectiveEnv.GEMINI_API_KEY = aiConfig.apiKey;
     }
     if (aiConfig.model) effectiveEnv.AI_MODEL = aiConfig.model;
+    if (aiConfig.baseUrl) effectiveEnv.OLLAMA_BASE_URL = aiConfig.baseUrl;
   }
 
   const provider = detectProvider(effectiveEnv);
@@ -49,7 +51,39 @@ export const DEFAULT_MODEL = {
   openai: 'gpt-4o-mini',
   anthropic: 'claude-3-5-haiku-latest',
   gemini: 'gemini-1.5-flash',
+  ollama: 'llama3.2',
 };
+
+/** Valid provider ids — shared by server config endpoint and callers. */
+export const PROVIDERS = ['openrouter', 'openai', 'anthropic', 'gemini', 'ollama', 'none'];
+
+/**
+ * Normalize an Ollama base URL from user/env input.
+ * Accepts: http://localhost:11434, localhost:11434, 127.0.0.1:11434, ollama.mynet:11434/api
+ */
+export function normalizeOllamaBaseUrl(input) {
+  let raw = String(input || '').trim();
+  if (!raw) return 'http://localhost:11434';
+  // If the user supplied an explicit scheme, respect it; otherwise default to http://
+  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw);
+  let u;
+  try {
+    u = new URL(hasScheme ? raw : 'http://' + raw);
+  } catch {
+    throw new Error(`Invalid Ollama base URL: ${input}`);
+  }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    throw new Error(`Ollama base URL must use http:// or https:// — got: ${input}`);
+  }
+  if (!u.hostname) {
+    throw new Error(`Ollama base URL is missing a hostname: ${input}`);
+  }
+  // strip /api or /v1 suffixes — they are added by the client
+  u.pathname = u.pathname.replace(/\/(api|v1)\/?$/i, '');
+  u.search = '';
+  u.hash = '';
+  return u.origin + (u.pathname === '/' ? '' : u.pathname.replace(/\/$/, ''));
+}
 
 const SYSTEM = `You are Monarch, a senior application-security analyst producing a defensive audit for the owner of the scanned application.
 Respond ONLY with a JSON object of this exact shape:
@@ -130,6 +164,24 @@ async function callProvider(provider, prompt, env, fetchImpl) {
       });
       const j = await ok(r);
       return j.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
+    }
+    if (provider === 'ollama') {
+      const base = normalizeOllamaBaseUrl(env.OLLAMA_BASE_URL || env.OLLAMA_HOST || 'http://localhost:11434');
+      const omodel = env.OLLAMA_MODEL || model;
+      const r = await fetchImpl(`${base}/api/chat`, {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: omodel,
+          stream: false,
+          format: 'json', // constrain output to a JSON object
+          options: { temperature: 0.2, num_ctx: 8192 },
+          messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }],
+        }),
+      });
+      const j = await ok(r);
+      return j.message?.content || '';
     }
     throw new Error(`Unknown AI provider "${provider}"`);
   } finally { clearTimeout(timer); }
