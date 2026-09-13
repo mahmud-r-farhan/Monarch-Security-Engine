@@ -97,6 +97,7 @@ export interface AiConfig {
   apiKey: string;
   model?: string;
   baseUrl?: string;
+  timeoutMs?: number;
 }
 
 export interface AppState {

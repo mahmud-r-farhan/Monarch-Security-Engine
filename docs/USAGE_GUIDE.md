@@ -110,7 +110,7 @@ npm start
 
 1. Click **AI: OpenRouter** pill in topbar
 2. Choose provider:
-   - **OpenRouter** (recommended): Multi-model, get key at openrouter.ai, model `deepseek/deepseek-r1-distill-qwen-7b` (free)
+   - **OpenRouter** (recommended): Multi-model, get key at openrouter.ai, model `openai/gpt-4o-mini` (fast + cheap; ~$0.001 per scan)
    - **OpenAI**: `gpt-4o-mini`
    - **Anthropic**: `claude-3-5-haiku-latest`
    - **Gemini**: `gemini-1.5-flash`

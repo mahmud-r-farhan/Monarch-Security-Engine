@@ -190,7 +190,8 @@ go run services/go/main.go -server -port 5002
 | `PORT` | `3000` | Dashboard port |
 | `AI_PROVIDER` | `openrouter` | `openrouter, openai, anthropic, gemini, ollama, none` |
 | `OPENROUTER_API_KEY` | — | OpenRouter key |
-| `OPENROUTER_MODEL` | `deepseek/deepseek-r1-distill-qwen-7b` | Model |
+| `OPENROUTER_MODEL` | `openai/gpt-4o-mini` | Model (fast non-reasoning models recommended) |
+| `AI_TIMEOUT_MS` | `120000` | Max wait for an AI response before falling back to rules-based analysis (30s–600s) |
 | `CRAWLER` | `fetch` | `fetch` or `playwright` |
 | `MAX_PAGES` | `25` | Max pages per crawl |
 | `MAX_CONCURRENT_SCANS` | `3` | Concurrent scan limit |

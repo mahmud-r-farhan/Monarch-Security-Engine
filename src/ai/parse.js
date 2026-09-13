@@ -18,7 +18,14 @@ export function parseModelJson(text) {
 }
 
 function stripFences(t) {
-  return t.replace(/^```(?:json)?\s*/im, '').replace(/```\s*$/m, '').trim();
+  // Reasoning models (DeepSeek-R1 distills, QwQ, …) may emit a <think> block
+  // before the JSON even when JSON mode is requested — strip it first.
+  return t
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/<think>[\s\S]*$/gi, '') // unclosed think block: keep what follows nothing — drop all
+    .replace(/^```(?:json)?\s*/im, '')
+    .replace(/```\s*$/m, '')
+    .trim();
 }
 
 /** Best-effort repairs for typical small-model JSON mistakes. */
