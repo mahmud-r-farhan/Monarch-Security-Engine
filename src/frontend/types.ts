@@ -79,6 +79,7 @@ export interface UptimeMonitor {
   intervalSeconds: number;
   expectedStatus: number;
   keyword?: string;
+  notifyOn?: 'all' | 'changes' | 'down' | 'none';
   active: boolean;
   status: 'up' | 'down' | 'degraded' | 'paused';
   uptimePercent: number;
@@ -111,5 +112,6 @@ export interface AppState {
     findingText: string;
     severities: Set<Severity>;
   };
+  notifications: Array<import('./components/notifications.js').NotifItem>;
   ws: WebSocket | null;
 }

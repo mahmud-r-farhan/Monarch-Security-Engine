@@ -37,6 +37,22 @@
       <span class="dot" style="background: var(--primary);"></span>
       <span id="ai-config-label">AI: OpenRouter</span>
     </button>
+    <div class="notif-wrap">
+      <button id="notif-bell-btn" class="btn btn-ghost notif-bell" title="Notifications">
+        🔔
+        <span id="notif-badge" class="notif-badge hidden">0</span>
+      </button>
+      <div id="notif-dropdown" class="notif-dropdown hidden">
+        <div class="notif-head">
+          <span class="notif-title">Notifications</span>
+          <div class="notif-head-actions">
+            <button id="notif-mark-all" class="notif-link">Mark all read</button>
+            <button id="notif-clear" class="notif-link danger">Clear</button>
+          </div>
+        </div>
+        <div id="notif-list" class="notif-list"><div class="empty">No notifications yet</div></div>
+      </div>
+    </div>
     <button id="dev-modal-btn" class="status-pill" title="System Info">
       <span class="dot"></span>
       <span id="health-text">System Active</span>
@@ -55,6 +71,7 @@
     <button class="nav-tab" data-view="recon">🧭 Recon</button>
     <button class="nav-tab" data-view="netdiscovery">📡 Network</button>
     <button class="nav-tab" data-view="monitor">⏱️ Monitor <span class="count" id="mon-count">0</span></button>
+    <button class="nav-tab" data-view="speed">⚡ Speed <span class="count" id="speed-count">0</span></button>
     <button class="nav-tab" data-view="loadtest">🚀 Load Test</button>
     <button class="nav-tab" data-view="inspector">🔌 Inspector</button>
     <button class="nav-tab" data-view="database">🗄️ Databases</button>
@@ -276,6 +293,21 @@
       <div id="monitors-grid" class="monitors"><div class="empty">No monitors yet. Add your first endpoint.</div></div>
     </section>
 
+    <!-- Page Speed -->
+    <section class="view" id="view-speed">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);">
+        <div><h2 style="font-size:18px;font-weight:800;">⚡ Website & Page Speed Analyzer</h2><p style="font-size:12.5px;color:var(--text-soft);">DNS/TCP/TLS/TTFB waterfall, page weight, compression, caching & resource-hint audits</p></div>
+      </div>
+      <div class="box" style="margin-bottom:16px;">
+        <form id="speed-form" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <div class="form-group" style="flex:3;min-width:240px;"><label>Target URL</label><input id="speed-target" placeholder="https://example.com" required spellcheck="false"></div>
+          <div class="form-group" style="flex:0;min-width:120px;"><label>Test Runs</label><select id="speed-runs" class="select"><option value="1">1 (quick)</option><option value="2" selected>2 (balanced)</option><option value="3">3 (best)</option></select></div>
+          <div class="form-group" style="flex:0;"><button type="submit" id="speed-btn" class="btn btn-primary">⚡ Analyze Speed</button></div>
+        </form>
+      </div>
+      <div id="speed-results"><div class="empty">Enter a URL to measure real connection timings, page weight and get optimization advice</div></div>
+    </section>
+
     <!-- Loadtest -->
     <section class="view" id="view-loadtest">
       <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);"><h2 style="font-size:18px;font-weight:800;">🚀 Load Tester & Security Prober</h2><p style="font-size:12.5px;color:var(--text-soft);">RPS, p50/p95/p99 latencies, CSRF, SQLi, XSS probes</p></div>
@@ -376,6 +408,7 @@
         <div class="form-group"><label>URL *</label><input id="mon-url" type="url" placeholder="https://api.example.com/health" required></div>
         <div class="form-row"><div class="form-group"><label>Interval</label><select id="mon-interval" class="select"><option value="15">15s</option><option value="30" selected>30s</option><option value="60">1m</option><option value="300">5m</option></select></div><div class="form-group"><label>Expected Status</label><input id="mon-status" type="number" value="200"></div></div>
         <div class="form-group"><label>Keyword (optional)</label><input id="mon-keyword" placeholder="ok, healthy"></div>
+        <div class="form-group"><label>Notifications</label><select id="mon-notify" class="select"><option value="all" selected>All events (down, slow, recovery)</option><option value="changes">Only status changes</option><option value="down">Only when down</option><option value="none">Never</option></select></div>
         <div class="modal-actions"><button type="button" class="btn btn-ghost" id="mon-cancel-btn">Cancel</button><button type="submit" class="btn btn-primary">Create</button></div>
       </form>
     </div>

@@ -18,5 +18,6 @@ export const state: AppState = {
     findingText: '',
     severities: new Set(['critical', 'high', 'medium', 'low', 'info']),
   },
+  notifications: [],
   ws: null,
 };

@@ -24,6 +24,14 @@
 
 ---
 
+## ✨ What's New in v2.1
+
+- **⚡ Website & Page Speed Analyzer** — Real DNS/TCP/TLS/TTFB waterfall, page weight, compression & caching audits, resource-hint checks, weighted 0–100 score + grade, actionable advice
+- **🔔 Notification System** — Monitors emit site-status alerts (DOWN / SLOW / back LIVE) to an in-app notification center with bell dropdown, unread badge, toasts, and native browser notifications; per-monitor preferences (`all` / `changes` / `down` / `none`)
+- **🧩 Modular Backend** — The 719-line `server.js` monolith sliced into `src/routes/` components (`scans.js`, `monitors.js`, `tools.js`), a `scanRegistry.js` singleton, and slimmer service modules
+- **⏸️ Monitor Pause/Resume** — Toggle monitors without deleting them
+- **📊 New Metrics** — Unread-notification gauge in Prometheus output; monitor + speed endpoints in `/api/docs`
+
 ## ✨ What's New in v2.0
 
 - **🎨 Professional UI Overhaul** — Dark, modern, glass-morphism design system with Inter + JetBrains Mono, responsive, accessible
@@ -128,9 +136,18 @@ go run services/go/main.go -server -port 5002
 | `GET` | `/api/scans/:id/report.:fmt` | Export `md, html, json, sarif` |
 | `DELETE` | `/api/scans/:id` | Delete scan |
 | `GET` | `/api/monitors` | List uptime monitors |
-| `POST` | `/api/monitors` | Create monitor |
+| `POST` | `/api/monitors` | Create monitor (supports `notifyOn` preference) |
 | `POST` | `/api/monitors/:id/check` | Trigger check |
+| `POST` | `/api/monitors/:id/toggle` | Pause/resume monitor |
 | `DELETE` | `/api/monitors/:id` | Delete monitor |
+| `GET` | `/api/notifications` | List notifications (`?limit=&unread=1`) |
+| `GET` | `/api/notifications/unread-count` | Unread count |
+| `POST` | `/api/notifications/:id/read` | Mark read |
+| `POST` | `/api/notifications/read-all` | Mark all read |
+| `DELETE` | `/api/notifications/:id` | Delete notification |
+| `DELETE` | `/api/notifications` | Clear all |
+| `POST` | `/api/speed/analyze` | Full page speed analysis (waterfall, audits, score) |
+| `POST` | `/api/speed/status` | Quick live/down status probe |
 | `POST` | `/api/loadtest/run` | Load test with SSE |
 | `GET` | `/api/netdiscovery/interfaces` | Local interfaces |
 | `GET` | `/api/netdiscovery/arp` | ARP table |
@@ -183,7 +200,7 @@ go run services/go/main.go -server -port 5002
 ## 🧪 Testing
 
 ```bash
-npm test              # 18+ unit & integration tests
+npm test              # 33+ unit & integration tests
 npm run typecheck     # TypeScript check
 ```
 
@@ -196,14 +213,17 @@ src/
 ├── frontend/          # TypeScript + Vite (source)
 │   ├── index.html     # SPA shell (modern v2 UI)
 │   ├── main.ts        # Orchestrator
+│   ├── components/    # Speed, notifications, monitors, scanner, …
 │   ├── styles.css     # Design system v2
 │   └── types.ts
+├── routes/            # Modular API components (scans, monitors+notifications, tools)
 ├── engine/            # Crawler, scanner, scoring
-├── modules/           # Net discovery, monitor, loadtest, TLS, recon, powerup
+├── modules/           # Speed, notifications, monitor, netdiscovery, TLS, recon, powerup
 ├── middleware/        # Rate limiting
 ├── ai/                # OpenRouter, OpenAI, Anthropic, Gemini, heuristic
 ├── report/            # Markdown, HTML, SARIF
-├── server.js          # Express + WS v2 hardened
+├── scanRegistry.js    # Scan state + disk persistence singleton
+├── server.js          # Slim Express orchestrator
 └── env.js
 services/
 ├── python/            # High-entropy secret detection

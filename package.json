@@ -1,6 +1,6 @@
 {
   "name": "monarch-security-engine",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Professional Web Vulnerability Scanner, Attack Surface Mapper & Network Defense Platform — AI-Powered",
   "type": "module",
   "main": "src/server.js",

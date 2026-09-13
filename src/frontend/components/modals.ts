@@ -68,7 +68,11 @@ export function setupModals() {
   });
 
   const addMonBtn = $('add-monitor-btn');
-  if (addMonBtn) addMonBtn.addEventListener('click', () => $('monitor-modal').classList.remove('hidden'));
+  if (addMonBtn) addMonBtn.addEventListener('click', () => {
+    const notifySel = $('mon-notify') as HTMLSelectElement | null;
+    if (notifySel) notifySel.value = 'all';
+    $('monitor-modal').classList.remove('hidden');
+  });
   const monClose = $('mon-modal-close');
   if (monClose) monClose.addEventListener('click', () => $('monitor-modal').classList.add('hidden'));
   const monCancel = $('mon-cancel-btn');

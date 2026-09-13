@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { notificationService } from './notifications.js';
 
 const MONITORS_FILE = path.resolve(process.cwd(), 'reports', 'monitors.json');
 
@@ -65,7 +66,7 @@ class MonitorService {
     return { ...m, uptimePercent, avgLatencyMs };
   }
 
-  async createMonitor({ name, url, intervalSeconds = 30, expectedStatus = 200, keyword = '' }) {
+  async createMonitor({ name, url, intervalSeconds = 30, expectedStatus = 200, keyword = '', notifyOn = 'all' }) {
     if (!url) throw new Error('Monitor URL is required');
     let normalizedUrl = url.trim();
     if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = `https://${normalizedUrl}`;
@@ -77,6 +78,7 @@ class MonitorService {
       intervalSeconds: Math.max(10, Number(intervalSeconds) || 30),
       expectedStatus: Number(expectedStatus) || 200,
       keyword: keyword?.trim() || '',
+      notifyOn: ['all', 'changes', 'down', 'none'].includes(notifyOn) ? notifyOn : 'all',
       status: 'pending',
       active: true,
       lastChecked: null,
@@ -132,7 +134,7 @@ class MonitorService {
     this.timers.set(monitor.id, timer);
   }
 
-  async checkMonitor(id) {
+  async  checkMonitor(id) {
     const m = this.monitors.get(id);
     if (!m || !m.active) return null;
 
@@ -180,6 +182,7 @@ class MonitorService {
       checkPoint.error = err.message || 'Connection error';
     }
 
+    const prevStatus = m.status;
     m.status = checkPoint.status;
     m.lastChecked = checkPoint.timestamp;
     m.lastLatencyMs = checkPoint.latencyMs;
@@ -189,6 +192,18 @@ class MonitorService {
     // Keep last 60 data points for sparkline/timeline
     m.history.push(checkPoint);
     if (m.history.length > 60) m.history.shift();
+
+    // Send notification on status transitions and recurring failures (rate-limited)
+    const statusChanged = prevStatus !== checkPoint.status;
+    const notifyOn = m.notifyOn || 'all'; // 'all' | 'changes' | 'down' | 'none'
+    const shouldNotify =
+      notifyOn !== 'none' && (
+        notifyOn === 'all' ? checkPoint.status !== 'up' || statusChanged
+        : notifyOn === 'down' ? checkPoint.status === 'down' && statusChanged
+        : statusChanged);
+    if (shouldNotify) {
+      notificationService.notifyMonitorStatus(m, checkPoint, prevStatus).catch(() => {});
+    }
 
     await this.persist();
     const updated = this.computeStats(m);

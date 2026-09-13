@@ -9,6 +9,8 @@ import { setupInspector } from './components/inspector.js';
 import { setupDatabaseTester } from './components/dbtester.js';
 import { setupTLSAndRecon } from './components/tlsrecon.js';
 import { renderDashboard } from './components/dashboard.js';
+import { setupSpeedTester } from './components/speedtest.js';
+import { setupNotificationCenter, loadNotifications, handleWsNotification, updateBadge } from './components/notifications.js';
 
 declare global {
   interface Window {
@@ -16,7 +18,9 @@ declare global {
     scanHostPortsModal: (host: string) => Promise<void>;
     copyToClipboard: (text: string, message?: string) => void;
     checkMonitorNow: (id: string) => Promise<void>;
+    toggleMonitor: (id: string) => Promise<void>;
     deleteMonitor: (id: string) => Promise<void>;
+    switchToView: (view: string) => void;
   }
 }
 
@@ -31,6 +35,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupInspector();
   setupDatabaseTester();
   setupTLSAndRecon();
+  setupSpeedTester();
+  setupNotificationCenter();
   setupWebSocket();
   checkHealthAndConfig();
 });
@@ -66,15 +72,16 @@ function setupNavigation() {
   });
 }
 
-function switchView(name: string) {
+export function switchView(name: string) {
   state.activeView = name;
   $$('.nav-tab').forEach(t => t.classList.toggle('active', (t as HTMLElement).dataset.view === name));
   $$('.view').forEach(p => p.classList.toggle('active', p.id === 'view-' + name));
   if (name === 'dashboard') renderDashboard();
   if (name === 'wpadmin' && state.currentScan) renderWpAdmin((state.currentScan as any).wpAdmin);
   if (name === 'netdiscovery' && !state.networkInterfaces.length) loadNetworkInfo();
-  if (name === 'monitor') loadMonitors();
+  if (name === 'monitor') { loadMonitors(); loadNotifications(); }
 }
+(window as any).switchToView = switchView;
 
 function setupWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -91,6 +98,8 @@ function setupWebSocket() {
           if (idx >= 0) state.monitors[idx] = msg.data; else state.monitors.push(msg.data);
           if (state.activeView === 'monitor') renderMonitors();
           updateMonitorBadge();
+        } else if (msg.channel === 'notification') {
+          handleWsNotification(msg.data);
         }
       } catch {}
     };
@@ -103,7 +112,7 @@ async function checkHealthAndConfig() {
     const res = await fetch('/api/health');
     const data = await res.json();
     if (data.ok) {
-      $('health-text').textContent = 'v' + (data.version || '2.0') + ' • ' + data.running + ' running';
+      $('health-text').textContent = 'v' + (data.version || '2.1') + ' • ' + data.running + ' running';
       if (data.ai) { state.aiConfig.provider = data.ai; updateAiLabel(); }
     }
   } catch { $('health-text').textContent = 'Offline'; }
@@ -114,6 +123,9 @@ async function checkHealthAndConfig() {
     if (conf.model) state.aiConfig.model = conf.model;
     updateAiLabel();
   } catch {}
+  // Initial notification load for the unread badge
+  try { await loadNotifications(); } catch {}
+  updateBadge();
 }
 
 // Window global assignments
@@ -136,6 +148,17 @@ window.scanHostPortsModal = async (host) => {
 window.checkMonitorNow = async (id) => {
   await fetch('/api/monitors/' + id + '/check', { method: 'POST' }).catch(() => {});
   toast('Check triggered', 'info');
+};
+
+window.toggleMonitor = async (id) => {
+  try {
+    const res = await fetch('/api/monitors/' + id + '/toggle', { method: 'POST' });
+    const updated = await res.json();
+    const idx = state.monitors.findIndex(m => m.id === id);
+    if (idx >= 0 && updated.id) state.monitors[idx] = updated;
+    renderMonitors();
+    toast(updated.active ? 'Monitor resumed' : 'Monitor paused', 'success');
+  } catch (err: any) { toast('Toggle failed: ' + err.message, 'error'); }
 };
 
 window.deleteMonitor = async (id) => {
