@@ -1,6 +1,59 @@
 import tls from 'node:tls';
 import { URL } from 'node:url';
 
+function isPrivateOrLocalHost(hostname) {
+  const host = hostname.toLowerCase();
+
+  if (
+    host === 'localhost' ||
+    host === '::1' ||
+    host === '0.0.0.0' ||
+    host === '169.254.169.254' ||
+    host === 'metadata.google.internal' ||
+    host === 'metadata.azure.internal'
+  ) {
+    return true;
+  }
+
+  const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (ipv4Match) {
+    const a = Number(ipv4Match[1]);
+    const b = Number(ipv4Match[2]);
+    const c = Number(ipv4Match[3]);
+    const d = Number(ipv4Match[4]);
+
+    if ([a, b, c, d].some((n) => n < 0 || n > 255)) return true;
+
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+  }
+
+  if (host.startsWith('fc') || host.startsWith('fd') || host.startsWith('fe80:')) return true;
+
+  return false;
+}
+
+function sanitizeHeadersCheckUrl(rawUrl) {
+  const parsed = new URL(rawUrl);
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Only http/https URLs are allowed');
+  }
+
+  if (parsed.username || parsed.password) {
+    throw new Error('URL credentials are not allowed');
+  }
+
+  if (isPrivateOrLocalHost(parsed.hostname)) {
+    throw new Error('Target host is not allowed');
+  }
+
+  return parsed.toString();
+}
+
 /**
  * TLS/SSL Certificate Analyzer
  * Analyzes certificate chain, expiry, protocols, and cipher suites
@@ -194,7 +247,8 @@ function calculateTLSGrade({ protocol, cipher, authorized, daysUntilExpiry, find
 
 export async function checkSecurityHeaders(url, { timeoutMs = 5000 } = {}) {
   try {
-    const res = await fetch(url, {
+    const safeUrl = sanitizeHeadersCheckUrl(url);
+    const res = await fetch(safeUrl, {
       method: 'GET',
       headers: { 'User-Agent': 'Monarch-Security-Engine TLS-Checker' },
       signal: AbortSignal.timeout(timeoutMs),
@@ -206,7 +260,7 @@ export async function checkSecurityHeaders(url, { timeoutMs = 5000 } = {}) {
     }
 
     const analysis = {
-      url,
+      url: safeUrl,
       status: res.status,
       headers: {
         'strict-transport-security': headers['strict-transport-security'] || null,
