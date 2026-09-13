@@ -70,6 +70,7 @@ async function crawlWithFetch(target, { log, maxPages, timeoutMs, onProgress, or
       status: res.status,
       headers: res.headers,
       contentType: res.headers['content-type'] || '',
+      html: null,
       title: null,
       links: [],
       scripts: [],
@@ -80,6 +81,7 @@ async function crawlWithFetch(target, { log, maxPages, timeoutMs, onProgress, or
     };
 
     if (/text\/html/i.test(page.contentType) && res.body) {
+      page.html = res.body.slice(0, 500000); // Store HTML for SEO/tech-stack analysis (truncated)
       const $ = cheerio.load(res.body);
       page.title = $('title').first().text().trim() || null;
       page.metaCsp = $('meta[http-equiv="Content-Security-Policy"]').attr('content') || null;
@@ -345,7 +347,7 @@ async function crawlWithPlaywright(chromium, target, { log, maxPages, timeoutMs,
 
     pages.push({
       url, finalUrl: page.url(), status: resp?.status() ?? null, headers: resp ? await resp.allHeaders() : {},
-      contentType: resp ? (await resp.allHeaders())['content-type'] || '' : '', title: await page.title(),
+      contentType: resp ? (await resp.allHeaders())['content-type'] || '' : '', html: html.slice(0, 500000), title: await page.title(),
       links: info.links, scripts: info.scripts.map(s => s.src),
       mixedContent: page.url().startsWith('https://') ? [...info.scripts.map(s => s.src), ...info.links].filter(u => u.startsWith('http://')) : [],
       redirectChain: [], hasInlineEventHandlers: /\son(click|load|error|mouseover|submit)\s*=/i.test(html),

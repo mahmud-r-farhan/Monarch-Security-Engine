@@ -1,0 +1,8 @@
+# Monarch Python Power-Up - optional dependencies
+# Core works with zero deps (stdlib only)
+# Install for enhanced features:
+requests>=2.31.0
+# Optional: for deeper TLS analysis
+# cryptography>=41.0.0
+# Optional: for CVE database
+# packaging>=23.0

@@ -9,3 +9,26 @@ node_modules/
 reports/
 dist/
 *.log
+audit/
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Power-up service caches
+__pycache__/
+*.pyc
+services/go/monarch-go
+services/python/__pycache__/
+
+# Temporary
+tmp/
+temp/
+*.tmp
