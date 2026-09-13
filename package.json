@@ -4,22 +4,42 @@
   "description": "Automated Web Vulnerability Scanner & Network Analyzer (AI-Powered)",
   "type": "module",
   "main": "src/index.js",
-  "bin": { "monarch": "src/cli.js" },
+  "bin": {
+    "monarch": "src/cli.js"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "app": "npm run build && node src/server.js",
     "demo:target": "node demo/target.js",
     "scan": "node src/cli.js",
     "test": "node --test test/*.test.js"
   },
-  "engines": { "node": ">=20" },
-  "keywords": ["security", "scanner", "vulnerability", "network-analyzer", "owasp", "ai", "devtools"],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "security",
+    "scanner",
+    "vulnerability",
+    "network-analyzer",
+    "owasp",
+    "ai",
+    "devtools"
+  ],
   "license": "MIT",
   "dependencies": {
     "cheerio": "^1.0.0",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "ws": "^8.21.3"
   },
   "optionalDependencies": {
     "playwright": "^1.50.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
   }
 }

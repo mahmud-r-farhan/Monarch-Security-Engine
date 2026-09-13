@@ -97,8 +97,11 @@ test('model JSON parser tolerates fences', () => {
 
 test('provider detection', () => {
   assert.equal(detectProvider({}), 'none');
+  assert.equal(detectProvider({ OPENROUTER_API_KEY: 'sk-or-test' }), 'openrouter');
+  assert.equal(detectProvider({ OPENROUTER_API_KEY: 'sk-or-test', OPENAI_API_KEY: 'x' }), 'openrouter');
   assert.equal(detectProvider({ OPENAI_API_KEY: 'x' }), 'openai');
   assert.equal(detectProvider({ OPENAI_API_KEY: 'x', AI_PROVIDER: 'gemini' }), 'gemini');
+  assert.equal(detectProvider({ AI_PROVIDER: 'openrouter' }), 'openrouter');
 });
 
 test('safety helpers', () => {

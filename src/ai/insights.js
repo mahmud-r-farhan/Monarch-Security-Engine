@@ -8,28 +8,48 @@
 export function detectProvider(env = process.env) {
   const forced = (env.AI_PROVIDER || '').toLowerCase();
   if (forced && forced !== 'auto') return forced;
+  if (env.OPENROUTER_API_KEY) return 'openrouter';
   if (env.ANTHROPIC_API_KEY) return 'anthropic';
   if (env.OPENAI_API_KEY) return 'openai';
   if (env.GEMINI_API_KEY) return 'gemini';
   return 'none';
 }
 
-export async function generateInsights(scan, { env = process.env, fetchImpl = fetch } = {}) {
-  const provider = detectProvider(env);
+export async function generateInsights(scan, { env = process.env, fetchImpl = fetch, aiConfig = null } = {}) {
+  const effectiveEnv = { ...env };
+  if (aiConfig) {
+    if (aiConfig.provider && aiConfig.provider !== 'auto') effectiveEnv.AI_PROVIDER = aiConfig.provider;
+    if (aiConfig.apiKey) {
+      effectiveEnv.AI_API_KEY = aiConfig.apiKey;
+      const p = effectiveEnv.AI_PROVIDER || 'openrouter';
+      if (p === 'openrouter') effectiveEnv.OPENROUTER_API_KEY = aiConfig.apiKey;
+      else if (p === 'openai') effectiveEnv.OPENAI_API_KEY = aiConfig.apiKey;
+      else if (p === 'anthropic') effectiveEnv.ANTHROPIC_API_KEY = aiConfig.apiKey;
+      else if (p === 'gemini') effectiveEnv.GEMINI_API_KEY = aiConfig.apiKey;
+    }
+    if (aiConfig.model) effectiveEnv.AI_MODEL = aiConfig.model;
+  }
+
+  const provider = detectProvider(effectiveEnv);
   const prompt = buildPrompt(scan);
   if (provider === 'none') return { provider: 'heuristic', model: 'monarch-rules-v1', ...heuristicInsights(scan) };
   try {
-    const text = await callProvider(provider, prompt, env, fetchImpl);
+    const text = await callProvider(provider, prompt, effectiveEnv, fetchImpl);
     const parsed = parseModelJson(text);
     if (!parsed) throw new Error('Model returned non-JSON output');
-    return { provider, model: env.AI_MODEL || DEFAULT_MODEL[provider], ...parsed };
+    return { provider, model: effectiveEnv.AI_MODEL || DEFAULT_MODEL[provider], ...parsed };
   } catch (err) {
     const fallback = heuristicInsights(scan);
     return { provider: 'heuristic', model: 'monarch-rules-v1', warning: `AI provider "${provider}" failed: ${err.message}. Showing rules-based analysis.`, ...fallback };
   }
 }
 
-const DEFAULT_MODEL = { openai: 'gpt-4o-mini', anthropic: 'claude-3-5-haiku-latest', gemini: 'gemini-1.5-flash' };
+export const DEFAULT_MODEL = {
+  openrouter: 'deepseek/deepseek-r1-distill-qwen-7b',
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-3-5-haiku-latest',
+  gemini: 'gemini-1.5-flash',
+};
 
 const SYSTEM = `You are Monarch, a senior application-security analyst producing a defensive audit for the owner of the scanned application.
 Respond ONLY with a JSON object of this exact shape:
@@ -53,18 +73,61 @@ async function callProvider(provider, prompt, env, fetchImpl) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), 60_000);
   try {
+    if (provider === 'openrouter') {
+      const apiKey = env.OPENROUTER_API_KEY || env.AI_API_KEY;
+      const r = await fetchImpl('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        signal: ac.signal,
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${apiKey}`,
+          'HTTP-Referer': 'https://github.com/mahmud-r-farhan/Monarch-Security-Engine',
+          'X-Title': 'Monarch Security Engine',
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.2,
+          response_format: { type: 'json_object' },
+          messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }],
+        }),
+      });
+      const j = await ok(r);
+      return j.choices?.[0]?.message?.content || '';
+    }
     if (provider === 'openai') {
-      const r = await fetchImpl('https://api.openai.com/v1/chat/completions', { method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json', authorization: `Bearer ${env.OPENAI_API_KEY}` }, body: JSON.stringify({ model, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }] }) });
+      const apiKey = env.OPENAI_API_KEY || env.AI_API_KEY;
+      const r = await fetchImpl('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model, temperature: 0.2, response_format: { type: 'json_object' }, messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }] }),
+      });
       const j = await ok(r);
       return j.choices?.[0]?.message?.content || '';
     }
     if (provider === 'anthropic') {
-      const r = await fetchImpl('https://api.anthropic.com/v1/messages', { method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model, max_tokens: 2500, temperature: 0.2, system: SYSTEM, messages: [{ role: 'user', content: prompt }] }) });
+      const apiKey = env.ANTHROPIC_API_KEY || env.AI_API_KEY;
+      const r = await fetchImpl('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({ model, max_tokens: 2500, temperature: 0.2, system: SYSTEM, messages: [{ role: 'user', content: prompt }] }),
+      });
       const j = await ok(r);
       return j.content?.map(c => c.text || '').join('') || '';
     }
     if (provider === 'gemini') {
-      const r = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${env.GEMINI_API_KEY}`, { method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ systemInstruction: { parts: [{ text: SYSTEM }] }, contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } }) });
+      const apiKey = env.GEMINI_API_KEY || env.AI_API_KEY;
+      const r = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        signal: ac.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: SYSTEM }] },
+          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+        }),
+      });
       const j = await ok(r);
       return j.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '';
     }

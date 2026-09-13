@@ -1,249 +1,1503 @@
-/* Monarch dashboard — vanilla JS, no build step. */
-(() => {
-  const $ = s => document.querySelector(s);
-  const SEV = ['critical', 'high', 'medium', 'low', 'info'];
-  const COLOR = { critical: '#ef4444', high: '#f97316', medium: '#eab308', low: '#3b82f6', info: '#6b7280' };
-  const GRADE_COLOR = { A: '#16a34a', B: '#65a30d', C: '#ca8a04', D: '#ea580c', F: '#dc2626' };
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(2)} MB`;
-  const hostOf = u => { try { return new URL(u).host; } catch { return u; } };
+/**
+ * Monarch Security Engine
+ * Clean, Natural & High-Performance Desktop Client Orchestrator
+ */
 
-  const state = { id: null, scan: null, findings: [], network: [], es: null, sevOn: new Set(SEV), typeOn: new Set(), fFilter: '', nFilter: '', selected: null, t0: 0 };
+// ========================================================
+// APPLICATION STATE
+// ========================================================
+const state = {
+  activeView: 'scanner',
+  activeSubtab: 'findings',
+  currentScan: null,
+  scansHistory: [],
+  monitors: [],
+  discoveredDevices: [],
+  networkInterfaces: [],
+  aiConfig: {
+    provider: 'openrouter',
+    apiKey: sessionStorage.getItem('monarch_ai_key') || '',
+    model: 'deepseek/deepseek-r1-distill-qwen-7b',
+  },
+  filters: {
+    findingText: '',
+    severities: new Set(['critical', 'high', 'medium', 'low', 'info']),
+  },
+  ws: null,
+};
 
-  /* ---------------- health & history ---------------- */
-  async function health() {
-    try {
-      const h = await (await fetch('/api/health')).json();
-      $('#health').textContent = `online · AI: ${h.ai} · crawler: ${h.crawler}`;
-      $('#health').classList.add('ok');
-      if (h.crawler === 'playwright') $('#engine').value = 'playwright';
-    } catch { $('#health').textContent = 'offline'; }
-  }
-  async function loadHistory() {
-    const list = await (await fetch('/api/scans')).json().catch(() => []);
-    $('#history').innerHTML = list.map(s => `
-      <li data-id="${s.id}" class="${s.id === state.id ? 'active' : ''}">
-        <div class="h-grade" style="background:${s.score ? GRADE_COLOR[s.score.grade] : '#334155'}">${s.score ? s.score.grade : (s.status === 'running' ? '…' : '!')}</div>
-        <div style="min-width:0"><div class="h-host">${esc(hostOf(s.target))}</div><div class="h-meta">${s.score ? `${s.score.score}/100 · ${s.findings} findings` : esc(s.status || '')} · ${new Date(s.startedAt).toLocaleString()}</div></div>
-      </li>`).join('') || '<li class="muted" style="cursor:default">No scans yet</li>';
-    $('#history').querySelectorAll('li[data-id]').forEach(li => li.onclick = () => openScan(li.dataset.id));
-  }
+// ========================================================
+// DOM SHORTCUTS
+// ========================================================
+const $ = (id) => document.getElementById(id);
+const $$ = (sel) => document.querySelectorAll(sel);
 
-  /* ---------------- start / open scans ---------------- */
-  $('#scan-form').onsubmit = async e => {
-    e.preventDefault();
-    const target = $('#target').value.trim();
-    if (!target) return;
-    $('#scan-btn').disabled = true;
-    try {
-      const r = await fetch('/api/scans', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ target, engine: $('#engine').value, maxPages: Number($('#pages').value) || 25 }) });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || r.statusText);
-      if (j.status === 'error') throw new Error(j.error);
-      resetView(target);
-      state.id = j.id;
-      history.replaceState(null, '', `#${j.id}`);
-      stream(j.id);
-      loadHistory();
-    } catch (err) {
-      alert(`Scan failed to start: ${err.message}`);
-    } finally { $('#scan-btn').disabled = false; }
-  };
+// ========================================================
+// INITIALIZATION
+// ========================================================
+document.addEventListener('DOMContentLoaded', () => {
+  setupNavigation();
+  setupModals();
+  setupScanForm();
+  setupHistory();
+  setupNetworkDiscovery();
+  setupMonitors();
+  setupLoadTester();
+  setupInspector();
+  setupDatabaseTester();
+  setupWebSocket();
+  checkHealthAndConfig();
+});
 
-  async function openScan(id) {
-    if (state.es) { state.es.close(); state.es = null; }
-    const r = await fetch(`/api/scans/${id}`);
-    const j = await r.json();
-    if (!r.ok) return alert(j.error || 'not found');
-    if (j.status === 'running') { resetView(j.target || ''); state.id = id; stream(id); return; }
-    if (j.status === 'error') return alert(`Scan failed: ${j.error}`);
-    resetView(j.target);
-    state.id = id;
-    history.replaceState(null, '', `#${id}`);
-    state.findings = j.findings; state.network = j.network;
-    finish(j);
-    loadHistory();
-  }
+// ========================================================
+// NAVIGATION & VIEW SWITCHING
+// ========================================================
+function setupNavigation() {
+  // Main navigation tab switcher
+  $$('.nav-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const view = tab.dataset.view;
+      if (!view) return;
+      state.activeView = view;
 
-  function resetView(target) {
-    Object.assign(state, { scan: null, findings: [], network: [], selected: null, t0: 0 });
-    state.typeOn = new Set();
-    $('#empty').classList.add('hidden'); $('#scan-view').classList.remove('hidden');
-    $('#s-target').textContent = target;
-    $('#s-meta').textContent = 'starting…';
-    $('#grade').textContent = '–'; $('#grade').style.background = '';
-    $('#progress-bar').style.width = '2%'; $('.progress').classList.remove('done');
-    $('#live-status').textContent = '';
-    $('#sev-counts').innerHTML = ''; $('#export').innerHTML = '';
-    $('#findings').innerHTML = ''; $('#net-body').innerHTML = ''; $('#ai').innerHTML = '<div class="ai-loading">AI insights will appear once the scan completes…</div>';
-    $('#cookies').innerHTML = ''; $('#inventory').innerHTML = '';
-    $('#net-detail').classList.add('hidden'); $('.net-wrap').classList.remove('split');
-    renderSevChips(); renderTypeChips(); updateCounts();
-  }
+      $$('.nav-tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
 
-  const STAGE_PCT = { init: 3, crawl: 30, assets: 55, probe: 70, analyze: 85, ai: 93 };
-  function stream(id) {
-    const es = new EventSource(`/api/scans/${id}/events`);
-    state.es = es;
-    es.addEventListener('status', e => {
-      const d = JSON.parse(e.data);
-      $('#live-status').textContent = `${d.level === 'warn' ? '⚠ ' : ''}[${d.stage}] ${d.message}`;
-      const pct = STAGE_PCT[d.stage]; if (pct) $('#progress-bar').style.width = Math.max(parseFloat($('#progress-bar').style.width) || 0, pct) + '%';
-      if (d.stage === 'crawl') $('#s-meta').textContent = `crawling… ${d.pages ?? 0} page(s) · ${state.network.length} requests`;
+      $$('.view-pane').forEach((p) => p.classList.remove('active'));
+      const targetPane = $(`view-${view}`);
+      if (targetPane) targetPane.classList.add('active');
+
+      if (view === 'dashboard') renderDashboard();
+      if (view === 'wpadmin' && state.currentScan) renderWpAdmin(state.currentScan.wpAdmin);
+      if (view === 'netdiscovery' && !state.networkInterfaces.length) loadNetworkInfo();
+      if (view === 'monitor') loadMonitors();
     });
-    es.addEventListener('network', e => {
-      const { entry } = JSON.parse(e.data);
-      if (!state.t0) state.t0 = entry.startedAt;
-      state.network.push(entry);
-      if (!state.typeOn.has(entry.type)) { state.typeOn.add(entry.type); renderTypeChips(); }
-      appendNetRow(entry);
-      $('#t-network').textContent = state.network.length;
-      $('#net-summary').textContent = netSummary();
-    });
-    es.addEventListener('finding', e => {
-      const { finding } = JSON.parse(e.data);
-      state.findings.push(finding);
-      $('#findings').insertAdjacentHTML('beforeend', findingHtml(finding));
-      updateCounts();
-    });
-    es.addEventListener('done', () => { });
-    es.addEventListener('error', e => { if (e.data) { const d = JSON.parse(e.data); $('#live-status').textContent = `✖ ${d.message}`; $('#s-meta').textContent = 'failed'; } });
-    es.addEventListener('closed', async () => {
-      es.close(); state.es = null;
-      const j = await (await fetch(`/api/scans/${id}`)).json();
-      if (j.findings) { state.findings = j.findings; state.network = j.network; finish(j); }
-      loadHistory();
-    });
-    es.onerror = () => { /* server closed or restart; 'closed' handles the normal path */ };
-  }
-
-  function finish(scan) {
-    state.scan = scan;
-    state.network = scan.network;
-    state.t0 = state.network.length ? Math.min(...state.network.map(e => e.startedAt)) : 0;
-    state.typeOn = new Set(state.network.map(e => e.type));
-    renderTypeChips();
-    $('#progress-bar').style.width = '100%'; $('.progress').classList.add('done');
-    $('#live-status').textContent = `completed in ${(scan.durationMs / 1000).toFixed(1)}s · engine ${scan.crawl.engine}`;
-    $('#s-meta').textContent = `${scan.crawl.pages.length} pages · ${scan.networkSummary.requests} requests · ${fmtBytes(scan.networkSummary.bytes)} · ${new Date(scan.finishedAt).toLocaleString()}`;
-    $('#grade').textContent = scan.score.grade; $('#grade').style.background = GRADE_COLOR[scan.score.grade];
-    $('#grade').title = `${scan.score.score}/100`;
-    $('#export').innerHTML = `<a href="/api/scans/${scan.id}/report.html" target="_blank">HTML / PDF</a><a href="/api/scans/${scan.id}/report.md">Markdown</a><a href="/api/scans/${scan.id}/report.json">JSON</a>`;
-    renderFindings(); renderNetwork(); renderAi(scan.insights); renderCookies(scan); renderInventory(scan);
-    updateCounts();
-  }
-
-  /* ---------------- findings ---------------- */
-  function updateCounts() {
-    const counts = {}; for (const f of state.findings) counts[f.severity] = (counts[f.severity] || 0) + 1;
-    $('#t-findings').textContent = state.findings.length;
-    $('#sev-counts').innerHTML = SEV.map(s => `<span style="background:${COLOR[s]}">${s} ${counts[s] || 0}</span>`).join('');
-  }
-  function renderSevChips() {
-    $('#sev-chips').innerHTML = SEV.map(s => `<button data-sev="${s}" class="${state.sevOn.has(s) ? 'on' : ''}" style="${state.sevOn.has(s) ? `background:${COLOR[s]}` : ''}">${s}</button>`).join('');
-    $('#sev-chips').querySelectorAll('button').forEach(b => b.onclick = () => { const s = b.dataset.sev; state.sevOn.has(s) ? state.sevOn.delete(s) : state.sevOn.add(s); renderSevChips(); renderFindings(); });
-  }
-  function findingHtml(f) {
-    const ev = f.evidence == null ? '' : typeof f.evidence === 'string' ? f.evidence : JSON.stringify(f.evidence, null, 2);
-    return `<details class="finding" style="border-left-color:${COLOR[f.severity]}" data-id="${esc(f.id)}">
-      <summary><span class="sev-badge" style="background:${COLOR[f.severity]}">${f.severity}</span><span class="f-title">${esc(f.title)}</span><span class="f-cat">${esc(f.category)}${f.cwe ? `<span class="tag">${esc(f.cwe)}</span>` : ''}</span></summary>
-      <div class="f-body">
-        ${f.location ? `<div class="loc">📍 ${esc(f.location)}</div>` : ''}
-        <div>${esc(f.description)}</div>
-        ${ev ? `<h5>Evidence</h5><pre>${esc(ev.slice(0, 2000))}</pre>` : ''}
-        ${f.remediation ? `<h5>Remediation</h5><pre class="rem">${esc(f.remediation)}</pre>` : ''}
-        ${f.owasp ? `<div class="muted" style="font-size:11.5px;margin-top:6px">OWASP ${esc(f.owasp)} · id <code>${esc(f.id)}</code></div>` : ''}
-        ${f.references?.length ? `<h5>References</h5><div class="f-refs">${f.references.map(r => `<a href="${esc(r)}" target="_blank" rel="noopener">${esc(r)}</a>`).join('')}</div>` : ''}
-      </div></details>`;
-  }
-  function renderFindings() {
-    const q = state.fFilter.toLowerCase();
-    const list = state.findings.filter(f => state.sevOn.has(f.severity) && (!q || `${f.title} ${f.id} ${f.category} ${f.location} ${f.description}`.toLowerCase().includes(q)));
-    $('#findings').innerHTML = list.map(findingHtml).join('') || `<div class="muted" style="padding:30px;text-align:center">${state.findings.length ? 'No findings match the filter.' : state.scan ? 'No findings — great job! 🎉' : 'Waiting for findings…'}</div>`;
-  }
-  $('#f-filter').oninput = e => { state.fFilter = e.target.value; renderFindings(); };
-
-  /* ---------------- AI ---------------- */
-  function renderAi(ins) {
-    if (!ins) { $('#ai').innerHTML = '<div class="ai-loading">AI insights were disabled for this scan.</div>'; return; }
-    const riskColor = { critical: COLOR.critical, high: COLOR.high, medium: COLOR.medium, low: COLOR.low, minimal: '#22c55e' }[ins.riskLevel] || COLOR.info;
-    $('#ai').innerHTML = `
-      <div><span class="risk" style="background:${riskColor}">${esc(ins.riskLevel)} risk</span><span class="prov">analysis by ${esc(ins.provider)}${ins.model ? ` · ${esc(ins.model)}` : ''}</span></div>
-      ${ins.warning ? `<div class="warn" style="margin-top:10px">${esc(ins.warning)}</div>` : ''}
-      ${ins.provider === 'heuristic' && !ins.warning ? `<div class="warn" style="margin-top:10px">Rules-based analyst active. Set <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code> or <code>GEMINI_API_KEY</code> in <code>.env</code> to enable LLM-generated insights.</div>` : ''}
-      <blockquote>${esc(ins.executiveSummary)}</blockquote>
-      ${ins.attackNarrative ? `<h3>Likely attack path</h3><p>${esc(ins.attackNarrative)}</p>` : ''}
-      ${ins.rootCauses?.length ? `<h3>Root causes</h3><ul>${ins.rootCauses.map(r => `<li>${esc(r)}</li>`).join('')}</ul>` : ''}
-      ${ins.actionPlan?.length ? `<h3>Prioritised remediation plan</h3>${ins.actionPlan.map(a => `<div class="plan"><div class="p-head"><span class="n">${a.priority}</span>${esc(a.title)}<span class="eff">effort: ${esc(a.effort)}</span></div><p><b>Why:</b> ${esc(a.why)}</p><pre>${esc(a.how)}</pre><div class="ids">${(a.findingIds || []).map(esc).join(' · ')}</div></div>`).join('')}` : ''}
-      ${ins.quickWins?.length ? `<h3>Quick wins</h3><ul>${ins.quickWins.map(q => `<li>${esc(q)}</li>`).join('')}</ul>` : ''}`;
-  }
-
-  /* ---------------- network ---------------- */
-  function netSummary() {
-    const n = state.network, bytes = n.reduce((a, e) => a + (e.size || 0), 0), failed = n.filter(e => e.error).length;
-    const span = n.length ? Math.max(...n.map(e => e.startedAt + (e.timing.total || 0))) - state.t0 : 0;
-    return `${n.length} requests · ${fmtBytes(bytes)} transferred · ${failed} failed · ${(span / 1000).toFixed(2)}s`;
-  }
-  function renderTypeChips() {
-    const types = [...new Set(state.network.map(e => e.type))];
-    $('#type-chips').innerHTML = types.map(t => `<button data-t="${esc(t)}" class="${state.typeOn.has(t) ? 'on' : ''}" style="${state.typeOn.has(t) ? 'background:var(--accent2)' : ''}">${esc(t)}</button>`).join('');
-    $('#type-chips').querySelectorAll('button').forEach(b => b.onclick = () => { const t = b.dataset.t; state.typeOn.has(t) ? state.typeOn.delete(t) : state.typeOn.add(t); renderTypeChips(); renderNetwork(); });
-  }
-  function netRowHtml(e) {
-    const span = Math.max(1, Math.max(...state.network.map(x => x.startedAt + (x.timing.total || 0))) - state.t0);
-    const left = ((e.startedAt - state.t0) / span * 100).toFixed(1), width = Math.max(0.8, (e.timing.total || 0) / span * 100).toFixed(1);
-    const st = e.error ? 'err' : Math.floor((e.status || 0) / 100);
-    let name; try { const u = new URL(e.url); name = (u.pathname.split('/').filter(Boolean).pop() || u.host) + u.search; } catch { name = e.url; }
-    return `<tr data-id="${e.id}" class="${state.selected === e.id ? 'sel' : ''}"><td>${e.id}</td><td>${esc(e.method)}</td><td class="st-${st}">${e.error ? '(failed)' : e.status}</td><td>${esc(e.type)}</td><td>${fmtBytes(e.size || 0)}</td><td>${e.timing.total ?? '–'} ms</td><td class="name" title="${esc(e.url)}">${esc(name)}</td><td class="wf"><div style="margin-left:${left}%;width:${width}%"></div></td></tr>`;
-  }
-  function appendNetRow(e) { if (!state.nFilter && state.typeOn.has(e.type)) $('#net-body').insertAdjacentHTML('beforeend', netRowHtml(e)); }
-  function renderNetwork() {
-    const q = state.nFilter.toLowerCase();
-    $('#net-body').innerHTML = state.network.filter(e => state.typeOn.has(e.type) && (!q || e.url.toLowerCase().includes(q))).map(netRowHtml).join('');
-    $('#net-summary').textContent = netSummary();
-  }
-  $('#net-body').onclick = e => { const tr = e.target.closest('tr'); if (!tr) return; state.selected = Number(tr.dataset.id); renderNetwork(); showDetail(state.network.find(x => x.id === state.selected)); };
-  $('#n-filter').oninput = e => { state.nFilter = e.target.value; renderNetwork(); };
-  function showDetail(e) {
-    if (!e) return;
-    const kv = o => Object.entries(o || {}).map(([k, v]) => `<div class="kv"><b>${esc(k)}:</b> ${esc(Array.isArray(v) ? v.join('\n') : v)}</div>`).join('') || '<div class="muted">—</div>';
-    $('#net-detail').innerHTML = `<button class="ghost close" id="nd-close">✕</button>
-      <h4>General</h4><div class="kv"><b>URL:</b> ${esc(e.url)}</div><div class="kv"><b>Method:</b> ${esc(e.method)}</div><div class="kv"><b>Status:</b> ${e.error ? esc(e.error) : `${e.status} ${esc(e.statusText)}`}</div><div class="kv"><b>Type:</b> ${esc(e.type)} · ${esc(e.mimeType || '')}</div><div class="kv"><b>Initiator:</b> ${esc(e.initiator)}</div>${e.redirectedFrom ? `<div class="kv"><b>Redirected from:</b> ${esc(e.redirectedFrom)}</div>` : ''}
-      <h4>Timing</h4><div class="kv"><b>TTFB:</b> ${e.timing.ttfb ?? '–'} ms · <b>Total:</b> ${e.timing.total ?? '–'} ms · <b>Size:</b> ${fmtBytes(e.size || 0)}</div>
-      <h4>Response headers</h4>${kv(e.response?.headers)}
-      <h4>Request headers</h4>${kv(e.request?.headers)}`;
-    $('#net-detail').classList.remove('hidden'); $('.net-wrap').classList.add('split');
-    $('#nd-close').onclick = () => { $('#net-detail').classList.add('hidden'); $('.net-wrap').classList.remove('split'); state.selected = null; renderNetwork(); };
-  }
-
-  /* ---------------- cookies / inventory ---------------- */
-  function renderCookies(scan) {
-    const flag = v => v ? '<span class="ok">✓</span>' : '<span class="bad">✗</span>';
-    const c = scan.crawl.cookies;
-    let html = `<div class="tbl"><h3>Cookies (${c.length})</h3>` + (c.length ? `<table><tr><th>Name</th><th>Secure</th><th>HttpOnly</th><th>SameSite</th><th>Domain</th><th>Path</th><th>Expires</th><th>Set by</th></tr>${c.map(k => `<tr><td class="mono">${esc(k.name)}</td><td>${flag(k.secure)}</td><td>${flag(k.httpOnly)}</td><td>${k.sameSite ? esc(k.sameSite) : '<span class="bad">✗</span>'}</td><td class="mono">${esc(k.domain || '(host-only)')}</td><td class="mono">${esc(k.path)}</td><td class="mono">${esc(k.expires || (k.maxAge != null ? `max-age ${k.maxAge}` : 'session'))}</td><td class="mono">${esc(k.setBy)}</td></tr>`).join('')}</table>` : '<div class="muted">No cookies set during crawl.</div>');
-    const st = scan.crawl.storage;
-    html += `<h3>Web Storage</h3>` + (st ? ['localStorage', 'sessionStorage'].map(a => `<b>${a}</b>` + (Object.keys(st[a] || {}).length ? `<table>${Object.entries(st[a]).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td class="mono">${esc(v.slice(0, 120))}</td></tr>`).join('')}</table>` : '<div class="muted">empty</div>')).join('') : '<div class="muted">Runtime storage inspection requires the browser (Playwright) engine.</div>');
-    html += '</div>';
-    $('#cookies').innerHTML = html;
-  }
-  function renderInventory(scan) {
-    const cr = scan.crawl;
-    $('#inventory').innerHTML = `<div class="tbl">
-      <h3>Pages (${cr.pages.length})</h3><table><tr><th>Status</th><th>URL</th><th>Title</th><th>Scripts</th><th>Redirects</th></tr>${cr.pages.map(p => `<tr><td>${p.status}</td><td class="mono">${esc(p.finalUrl)}</td><td>${esc(p.title || '')}</td><td>${p.scripts.length}</td><td>${p.redirectChain.length}</td></tr>`).join('')}</table>
-      <h3>Forms (${cr.forms.length})</h3>${cr.forms.length ? `<table><tr><th>Page</th><th>Method</th><th>Action</th><th>Inputs</th><th>CSRF token</th><th>Password</th></tr>${cr.forms.map(f => `<tr><td class="mono">${esc(f.page)}</td><td>${f.method}</td><td class="mono">${esc(f.action)}</td><td class="mono">${esc(f.inputs.map(i => i.name || i.type).join(', '))}</td><td>${f.hasCsrfToken ? '<span class="ok">✓</span>' : '<span class="bad">✗</span>'}</td><td>${f.hasPassword ? 'yes' : ''}</td></tr>`).join('')}</table>` : '<div class="muted">none</div>'}
-      <h3>Third-party origins (${cr.externalOrigins.length})</h3>${cr.externalOrigins.length ? `<div class="mono">${cr.externalOrigins.map(esc).join('<br>')}</div>` : '<div class="muted">none</div>'}
-      <h3>Scripts (${cr.assets.filter(a => a.type === 'script').length})</h3><table><tr><th>URL</th><th>SRI</th><th>Found on</th></tr>${cr.assets.filter(a => a.type === 'script').map(a => `<tr><td class="mono">${esc(a.url)}</td><td>${a.integrity ? '<span class="ok">✓</span>' : a.url.startsWith(cr.origin) ? '<span class="muted">n/a</span>' : '<span class="bad">✗</span>'}</td><td class="mono">${esc(a.foundOn)}</td></tr>`).join('')}</table>
-      <h3>Probes</h3><table><tr><th>Path</th><th>Status</th><th>Type</th></tr>${cr.probes.map(p => `<tr><td class="mono">${esc(p.path)}</td><td class="${p.status === 200 && p.kind === 'sensitive' ? 'bad' : ''}">${p.status}</td><td class="mono">${esc(p.contentType)}</td></tr>`).join('')}</table>
-      ${cr.cors ? `<h3>CORS probe</h3><div class="mono">Origin: ${esc(cr.cors.requestedOrigin)} → Access-Control-Allow-Origin: ${esc(cr.cors.allowOrigin || '(none)')} · Allow-Credentials: ${esc(cr.cors.allowCredentials || '(none)')}</div>` : ''}
-    </div>`;
-  }
-
-  /* ---------------- tabs & boot ---------------- */
-  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
-    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
-    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === `panel-${b.dataset.tab}`));
   });
-  $('#refresh-history').onclick = loadHistory;
-  health(); loadHistory();
-  if (location.hash.length > 10) openScan(location.hash.slice(1));
-})();
+
+  // Scanner subtab switcher
+  $$('.sub-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const subtab = tab.dataset.subtab;
+      if (!subtab) return;
+      state.activeSubtab = subtab;
+
+      $$('.sub-tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      $$('.sub-panel').forEach((p) => p.classList.remove('active'));
+      const targetPanel = $(`panel-${subtab}`);
+      if (targetPanel) targetPanel.classList.add('active');
+    });
+  });
+
+  // Inspector subtabs (HTTP vs SSH)
+  $$('.insp-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.target;
+      $$('.insp-tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      $$('.insp-pane').forEach((p) => p.classList.remove('active'));
+      if ($(target)) $(target).classList.add('active');
+    });
+  });
+}
+
+// ========================================================
+// WEBSOCKET CLIENT
+// ========================================================
+function setupWebSocket() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+  try {
+    const ws = new WebSocket(wsUrl);
+    state.ws = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ action: 'subscribe', channel: 'all' }));
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.channel === 'monitor_update') {
+          handleMonitorWsUpdate(msg.data);
+        }
+      } catch { /* ignore */ }
+    };
+
+    ws.onclose = () => {
+      setTimeout(setupWebSocket, 5000);
+    };
+  } catch { /* ignore */ }
+}
+
+function handleMonitorWsUpdate(updatedMon) {
+  const idx = state.monitors.findIndex((m) => m.id === updatedMon.id);
+  if (idx >= 0) state.monitors[idx] = updatedMon;
+  else state.monitors.push(updatedMon);
+
+  if (state.activeView === 'monitor') renderMonitors();
+  updateMonitorCountBadge();
+}
+
+// ========================================================
+// HEALTH, DEVELOPER MODAL & AI CONFIGURATION
+// ========================================================
+async function checkHealthAndConfig() {
+  try {
+    const res = await fetch('/api/health');
+    const data = await res.json();
+    if (data.ok) {
+      $('health-text').textContent = 'System Active · Info';
+      if (data.ai) {
+        state.aiConfig.provider = data.ai;
+        updateAiTopbarLabel();
+      }
+    }
+  } catch {
+    $('health-text').textContent = 'Server Offline';
+  }
+
+  // Load server AI config
+  try {
+    const res = await fetch('/api/config');
+    const conf = await res.json();
+    if (conf.provider) state.aiConfig.provider = conf.provider;
+    if (conf.model) state.aiConfig.model = conf.model;
+    updateAiTopbarLabel();
+  } catch { /* ignore */ }
+}
+
+function updateAiTopbarLabel() {
+  const p = state.aiConfig.provider || 'openrouter';
+  const displayNames = {
+    openrouter: 'AI: OpenRouter',
+    openai: 'AI: OpenAI',
+    anthropic: 'AI: Anthropic',
+    gemini: 'AI: Gemini',
+    none: 'Offline ML-Kit',
+  };
+  $('ai-config-label').textContent = displayNames[p] || `AI: ${p}`;
+}
+
+function setupModals() {
+  // Developer & App Info Modal
+  $('dev-modal-btn')?.addEventListener('click', () => {
+    loadDeveloperProfile();
+    $('dev-modal').classList.remove('hidden');
+  });
+
+  $('dev-modal-close')?.addEventListener('click', () => {
+    $('dev-modal').classList.add('hidden');
+  });
+
+  // AI Config Modal
+  $('ai-config-btn').addEventListener('click', () => {
+    $('ai-provider-select').value = state.aiConfig.provider;
+    $('ai-key-input').value = state.aiConfig.apiKey;
+    $('ai-model-input').value = state.aiConfig.model;
+    $('ai-modal').classList.remove('hidden');
+  });
+
+  $('ai-modal-close').addEventListener('click', () => {
+    $('ai-modal').classList.add('hidden');
+  });
+
+  $('ai-provider-select').addEventListener('change', (e) => {
+    const prov = e.target.value;
+    const defaults = {
+      openrouter: 'deepseek/deepseek-r1-distill-qwen-7b',
+      openai: 'gpt-4o-mini',
+      anthropic: 'claude-3-5-haiku-latest',
+      gemini: 'gemini-1.5-flash',
+      none: 'monarch-ml-heuristics-v1',
+    };
+    $('ai-model-input').value = defaults[prov] || '';
+    $('ai-key-group').style.display = prov === 'none' ? 'none' : 'block';
+  });
+
+  $('ai-config-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const provider = $('ai-provider-select').value;
+    const apiKey = $('ai-key-input').value.trim();
+    const model = $('ai-model-input').value.trim();
+
+    state.aiConfig = { provider, apiKey, model };
+    if (apiKey) sessionStorage.setItem('monarch_ai_key', apiKey);
+    else sessionStorage.removeItem('monarch_ai_key');
+
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(state.aiConfig),
+    }).catch(() => {});
+
+    updateAiTopbarLabel();
+    $('ai-modal').classList.add('hidden');
+  });
+
+  $('ai-clear-btn').addEventListener('click', async () => {
+    state.aiConfig = { provider: 'none', apiKey: '', model: 'monarch-ml-heuristics-v1' };
+    sessionStorage.removeItem('monarch_ai_key');
+    $('ai-provider-select').value = 'none';
+    $('ai-key-input').value = '';
+    $('ai-model-input').value = 'monarch-ml-heuristics-v1';
+    await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(state.aiConfig),
+    }).catch(() => {});
+    updateAiTopbarLabel();
+    $('ai-modal').classList.add('hidden');
+  });
+
+  // Uptime Monitor Modal
+  $('add-monitor-btn')?.addEventListener('click', () => {
+    $('monitor-modal').classList.remove('hidden');
+  });
+  $('mon-modal-close')?.addEventListener('click', () => {
+    $('monitor-modal').classList.add('hidden');
+  });
+  $('mon-cancel-btn')?.addEventListener('click', () => {
+    $('monitor-modal').classList.add('hidden');
+  });
+}
+
+async function loadDeveloperProfile() {
+  try {
+    const res = await fetch('https://api.github.com/users/mahmud-r-farhan', {
+      headers: { 'Accept': 'application/vnd.github.v3+json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.avatar_url) $('dev-avatar').src = data.avatar_url;
+      if (data.name) $('dev-name').textContent = data.name;
+      if (data.login) $('dev-handle').textContent = `@${data.login}`;
+      if (data.bio) $('dev-bio').textContent = data.bio;
+    }
+  } catch {
+    // Fallback default details already in DOM
+  }
+}
+
+// ========================================================
+// SCAN FORM & REAL-TIME STREAMING
+// ========================================================
+function setupScanForm() {
+  $('scan-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const target = $('target').value.trim();
+    const engine = $('engine').value;
+    const maxPages = Number($('pages').value) || 25;
+
+    if (!target) return;
+
+    switchView('scanner');
+
+    $('scan-btn').disabled = true;
+    $('scan-btn').innerHTML = '<span class="pulse-dot"></span> Scanning…';
+
+    $('empty').classList.add('hidden');
+    $('scan-view').classList.remove('hidden');
+
+    $('s-target').textContent = target;
+    $('s-meta').textContent = `Initializing crawl (${engine})…`;
+    $('live-status').textContent = 'Connecting to scanner engine…';
+    $('progress-bar').style.width = '10%';
+    $('grade').textContent = '–';
+    $('grade').className = 'grade-badge';
+
+    $('findings').innerHTML = '<div class="empty-hint">Discovering endpoints &amp; checking vulnerabilities…</div>';
+    $('net-body').innerHTML = '';
+    $('ai').innerHTML = '<div class="empty-hint">AI Remediation plan will generate upon scan completion…</div>';
+
+    try {
+      const res = await fetch('/api/scans', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          target,
+          engine,
+          maxPages,
+          ai: true,
+          aiConfig: state.aiConfig,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to initiate scan');
+      }
+
+      const { id } = await res.json();
+      streamScanEvents(id);
+    } catch (err) {
+      alert(`Scan failed: ${err.message}`);
+      resetScanButton();
+    }
+  });
+}
+
+function streamScanEvents(id) {
+  const es = new EventSource(`/api/scans/${id}/events`);
+  let reqCount = 0;
+  let pageCount = 0;
+  const liveFindings = [];
+
+  es.addEventListener('status', (ev) => {
+    const data = JSON.parse(ev.data);
+    $('live-status').textContent = data.message || '';
+
+    if (data.stage === 'crawl') {
+      pageCount = data.pages || pageCount;
+      $('progress-bar').style.width = '40%';
+      $('s-meta').textContent = `Crawled ${pageCount} pages · ${reqCount} requests observed`;
+    } else if (data.stage === 'analyze') {
+      $('progress-bar').style.width = '70%';
+    } else if (data.stage === 'ai') {
+      $('progress-bar').style.width = '90%';
+    }
+  });
+
+  es.addEventListener('network', (ev) => {
+    const { entry } = JSON.parse(ev.data);
+    reqCount++;
+    $('s-meta').textContent = `Crawled ${pageCount} pages · ${reqCount} requests observed`;
+    $('t-network').textContent = reqCount;
+    appendNetworkRow(entry, reqCount);
+  });
+
+  es.addEventListener('finding', (ev) => {
+    const { finding } = JSON.parse(ev.data);
+    liveFindings.push(finding);
+    $('t-findings').textContent = liveFindings.length;
+    renderFindings(liveFindings);
+    updateSeverityPills(liveFindings);
+  });
+
+  es.addEventListener('done', async () => {
+    es.close();
+    $('progress-bar').style.width = '100%';
+    $('live-status').textContent = 'Audit complete';
+    resetScanButton();
+
+    const fullRes = await fetch(`/api/scans/${id}`);
+    const scan = await fullRes.json();
+    state.currentScan = scan;
+
+    renderFullScan(scan);
+    loadHistory();
+  });
+
+  es.addEventListener('error', () => {
+    es.close();
+    resetScanButton();
+  });
+}
+
+function resetScanButton() {
+  $('scan-btn').disabled = false;
+  $('scan-btn').innerHTML = '<span class="btn-icon">⚡</span> Scan Target';
+}
+
+function switchView(viewName) {
+  state.activeView = viewName;
+  $$('.nav-tab').forEach((t) => t.classList.toggle('active', t.dataset.view === viewName));
+  $$('.view-pane').forEach((p) => p.classList.toggle('active', p.id === `view-${viewName}`));
+}
+
+// ========================================================
+// RENDER FULL SCAN RESULTS
+// ========================================================
+function renderFullScan(scan) {
+  $('grade').textContent = scan.score?.grade || '–';
+  $('grade').className = `grade-badge grade-${scan.score?.grade || 'C'}`;
+  $('s-target').textContent = scan.target;
+  $('s-meta').textContent = `Completed in ${Math.round(scan.durationMs / 1000)}s · ${scan.crawl?.pages?.length || 0} pages · ${scan.networkSummary?.requests || 0} requests`;
+
+  renderFindings(scan.findings || []);
+  renderAiInsights(scan.insights, scan);
+  renderCookiesAndStorage(scan);
+  renderInventory(scan);
+  renderExportButtons(scan.id);
+
+  renderTechStack(scan.techStack || [], scan.rateLimiting);
+  renderSeoAudit(scan.seo);
+  renderWpAdmin(scan.wpAdmin);
+  renderDashboard();
+}
+
+// ========================================================
+// FINDINGS RENDERING
+// ========================================================
+function renderFindings(findings) {
+  const container = $('findings');
+  if (!findings.length) {
+    container.innerHTML = '<div class="empty-hint">No vulnerabilities detected! Posture is hardened.</div>';
+    return;
+  }
+
+  const query = state.filters.findingText.toLowerCase();
+  const filtered = findings.filter((f) => {
+    if (!state.filters.severities.has(f.severity)) return false;
+    if (!query) return true;
+    return (
+      (f.title || '').toLowerCase().includes(query) ||
+      (f.category || '').toLowerCase().includes(query) ||
+      (f.description || '').toLowerCase().includes(query)
+    );
+  });
+
+  container.innerHTML = filtered
+    .map(
+      (f) => `
+    <div class="finding-card">
+      <div class="finding-header">
+        <div class="finding-title-wrap">
+          <span class="sev-tag ${f.severity}">${f.severity}</span>
+          <span class="finding-title">${escapeHtml(f.title)}</span>
+        </div>
+        <span class="finding-loc">${escapeHtml(f.location || '')}</span>
+      </div>
+      <div class="finding-desc">${escapeHtml(f.description)}</div>
+      ${f.remediation ? `<div class="finding-code"><b>Fix:</b> ${escapeHtml(f.remediation)}</div>` : ''}
+    </div>
+  `
+    )
+    .join('');
+}
+
+function updateSeverityPills(findings) {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  findings.forEach((f) => counts[f.severity] = (counts[f.severity] || 0) + 1);
+
+  $('sev-counts').innerHTML = `
+    ${counts.critical ? `<span class="sev-pill crit">${counts.critical} Crit</span>` : ''}
+    ${counts.high ? `<span class="sev-pill high">${counts.high} High</span>` : ''}
+    ${counts.medium ? `<span class="sev-pill med">${counts.medium} Med</span>` : ''}
+    ${counts.low ? `<span class="sev-pill low">${counts.low} Low</span>` : ''}
+  `;
+}
+
+$('f-filter')?.addEventListener('input', (e) => {
+  state.filters.findingText = e.target.value;
+  if (state.currentScan?.findings) renderFindings(state.currentScan.findings);
+});
+
+// ========================================================
+// AI INSIGHTS RENDERING
+// ========================================================
+function renderAiInsights(insights, scan) {
+  const aiContainer = $('ai');
+  if (!insights) {
+    aiContainer.innerHTML = '<div class="empty-hint">No AI insights generated.</div>';
+    return;
+  }
+
+  aiContainer.innerHTML = `
+    <div class="ai-summary-card">
+      <div class="ai-badge">🤖 Intelligence: ${escapeHtml(insights.provider)} (${escapeHtml(insights.model)})</div>
+      <p style="font-size: 13px; line-height: 1.5; color: var(--text-primary);">${escapeHtml(insights.executiveSummary || '')}</p>
+      ${
+        insights.attackNarrative
+          ? `<div class="ai-narrative-box"><b>⚠️ Potential Attack Chain:</b> ${escapeHtml(insights.attackNarrative)}</div>`
+          : ''
+      }
+    </div>
+
+    <div class="box-header" style="margin-top: 14px;">
+      <h3>Prioritized Action Plan</h3>
+    </div>
+
+    <div class="ai-plan-list">
+      ${(insights.actionPlan || [])
+        .map(
+          (item) => `
+        <div class="ai-plan-item">
+          <div class="ai-plan-head">
+            <span class="plan-priority">Priority #${item.priority}</span>
+            <span class="sev-tag ${item.effort === 'low' ? 'low' : 'medium'}">${escapeHtml(item.effort)} effort</span>
+          </div>
+          <h4 style="color: var(--text-primary); margin-bottom: 4px; font-size: 13px;">${escapeHtml(item.title)}</h4>
+          <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">${escapeHtml(item.why)}</p>
+          <div class="finding-code">${escapeHtml(item.how)}</div>
+        </div>
+      `
+        )
+        .join('')}
+    </div>
+  `;
+}
+
+// ========================================================
+// DEVTOOLS NETWORK LOG & ROW RENDERING
+// ========================================================
+function appendNetworkRow(entry, index) {
+  const tbody = $('net-body');
+  if (!tbody) return;
+  const tr = document.createElement('tr');
+  const status = entry.response?.status || 0;
+  const statusClass = status >= 500 ? 'crit' : status >= 400 ? 'high' : status >= 300 ? 'med' : 'low';
+
+  tr.innerHTML = `
+    <td>${index}</td>
+    <td><span class="badge">${escapeHtml(entry.method || 'GET')}</span></td>
+    <td><span class="sev-pill ${statusClass}">${status}</span></td>
+    <td>${escapeHtml(entry.type || 'fetch')}</td>
+    <td>${formatBytes(entry.response?.size || 0)}</td>
+    <td>${entry.durationMs || 0}ms</td>
+    <td title="${escapeHtml(entry.url)}">${escapeHtml(entry.url)}</td>
+  `;
+
+  tr.addEventListener('click', () => {
+    $$('#net-body tr').forEach((r) => r.classList.remove('active'));
+    tr.classList.add('active');
+    showNetworkDetail(entry);
+  });
+
+  tbody.appendChild(tr);
+}
+
+function showNetworkDetail(entry) {
+  const detail = $('net-detail');
+  detail.classList.remove('hidden');
+
+  detail.innerHTML = `
+    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+      <h4 style="color: var(--text-primary); font-size: 13px;">Request Details</h4>
+      <button class="ghost-btn" onclick="$('net-detail').classList.add('hidden')">&times;</button>
+    </div>
+    <div style="margin-bottom: 8px;">
+      <span class="sev-tag low">${entry.method || 'GET'}</span>
+      <span style="font-family: var(--font-mono); font-size: 11px; margin-left: 6px;">${escapeHtml(entry.url)}</span>
+    </div>
+    <div class="form-group">
+      <label>Response Headers</label>
+      <div class="finding-code" style="max-height: 160px;">${Object.entries(entry.response?.headers || {})
+        .map(([k, v]) => `${k}: ${v}`)
+        .join('\n')}</div>
+    </div>
+  `;
+}
+
+// ========================================================
+// COOKIES & INVENTORY RENDERING
+// ========================================================
+function renderCookiesAndStorage(scan) {
+  const cookies = scan.crawl?.cookies || [];
+  const container = $('cookies');
+
+  if (!cookies.length) {
+    container.innerHTML = '<div class="empty-hint">No cookies detected during crawl.</div>';
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="net-table-wrap">
+      <table class="net-table">
+        <thead>
+          <tr><th>Name</th><th>HttpOnly</th><th>Secure</th><th>SameSite</th><th>Path</th><th>Set By</th></tr>
+        </thead>
+        <tbody>
+          ${cookies
+            .map(
+              (c) => `
+            <tr>
+              <td style="font-weight: 600; color: var(--text-primary);">${escapeHtml(c.name)}</td>
+              <td>${c.httpOnly ? '✅' : '❌'}</td>
+              <td>${c.secure ? '✅' : '❌'}</td>
+              <td>${escapeHtml(c.sameSite || 'None')}</td>
+              <td>${escapeHtml(c.path || '/')}</td>
+              <td style="font-size: 10px; color: var(--text-muted);">${escapeHtml(c.setBy || '')}</td>
+            </tr>
+          `
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderInventory(scan) {
+  const origins = scan.crawl?.externalOrigins || [];
+  const container = $('inventory');
+
+  container.innerHTML = `
+    <div class="box-header">
+      <h3>External Dependencies (${origins.length})</h3>
+    </div>
+    <div class="tech-grid">
+      ${origins
+        .map(
+          (o) => `
+        <div class="tech-card">
+          <div class="tech-name">🌐 ${escapeHtml(o)}</div>
+          <div class="tech-cat">External Dependency</div>
+        </div>
+      `
+        )
+        .join('')}
+    </div>
+  `;
+}
+
+function renderExportButtons(scanId) {
+  $('export').innerHTML = `
+    <a href="/api/scans/${scanId}/report.md" download class="btn btn-glass" style="font-size: 11px; padding: 4px 8px;">Markdown</a>
+    <a href="/api/scans/${scanId}/report.html" target="_blank" class="btn btn-glass" style="font-size: 11px; padding: 4px 8px;">HTML</a>
+    <a href="/api/scans/${scanId}/report.json" download class="btn btn-glass" style="font-size: 11px; padding: 4px 8px;">JSON</a>
+  `;
+}
+
+// ========================================================
+// VIEW: WORDPRESS & ADMIN SECURITY (NEW)
+// ========================================================
+function renderWpAdmin(wpAdmin) {
+  if (!wpAdmin) return;
+
+  $('wp-detected').textContent = wpAdmin.isWordpress ? 'WordPress Active' : (wpAdmin.isPhp ? 'PHP Application' : 'Not Detected');
+  $('wp-detected').style.color = wpAdmin.isWordpress ? 'var(--sev-high-fg)' : 'var(--text-primary)';
+
+  $('wp-xmlrpc').textContent = wpAdmin.xmlRpcExposed ? 'Exposed (Risk)' : 'Blocked / Disabled';
+  $('wp-xmlrpc').style.color = wpAdmin.xmlRpcExposed ? 'var(--sev-crit-fg)' : 'var(--sev-low-fg)';
+
+  const userEnumCount = wpAdmin.userEnumeration?.usernames?.length || 0;
+  $('wp-user-enum').textContent = wpAdmin.userEnumeration?.vulnerable ? `Vulnerable (${userEnumCount} users leaked)` : 'Protected';
+  $('wp-user-enum').style.color = wpAdmin.userEnumeration?.vulnerable ? 'var(--sev-crit-fg)' : 'var(--sev-low-fg)';
+
+  // Render endpoints
+  const endpointsWrap = $('wp-endpoints-container');
+  if (!wpAdmin.exposedEndpoints || !wpAdmin.exposedEndpoints.length) {
+    endpointsWrap.innerHTML = '<div class="empty-hint">No exposed admin portals detected on this host.</div>';
+  } else {
+    endpointsWrap.innerHTML = `
+      <div class="tech-grid">
+        ${wpAdmin.exposedEndpoints.map(ep => `
+          <div class="tech-card">
+            <div class="tech-name">🔑 ${escapeHtml(ep.name)}</div>
+            <div class="tech-cat">${escapeHtml(ep.category)} · Status ${ep.status}</div>
+            <div class="tech-evidence">${escapeHtml(ep.path)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // Render users
+  const usersWrap = $('wp-users-container');
+  if (!wpAdmin.userEnumeration?.usernames?.length) {
+    usersWrap.innerHTML = '<div class="empty-hint">No usernames leaked via author query or REST API.</div>';
+  } else {
+    usersWrap.innerHTML = `
+      <div class="tech-grid">
+        ${wpAdmin.userEnumeration.usernames.map(u => `
+          <div class="tech-card">
+            <div class="tech-name">👤 ${escapeHtml(u)}</div>
+            <div class="tech-cat">WordPress Author / Admin User</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+}
+
+// ========================================================
+// VIEW: TECH STACK & RATE LIMITS
+// ========================================================
+function renderTechStack(technologies, rateLimiting) {
+  const techList = $('tech-list');
+  $('tech-badge-count').textContent = technologies.length;
+
+  if (!technologies.length) {
+    techList.innerHTML = '<div class="empty-hint">No technology signatures detected yet.</div>';
+  } else {
+    techList.innerHTML = technologies
+      .map(
+        (t) => `
+      <div class="tech-card">
+        <div class="tech-name">${escapeHtml(t.name)}</div>
+        <div class="tech-cat">${escapeHtml(t.category)}</div>
+        <div class="tech-evidence" title="${escapeHtml(t.evidence)}">${escapeHtml(t.evidence)}</div>
+      </div>
+    `
+      )
+      .join('');
+  }
+
+  const rlContainer = $('ratelimit-info');
+  if (!rateLimiting) {
+    rlContainer.innerHTML = '<div class="empty-hint">No API rate limiting data observed.</div>';
+    return;
+  }
+
+  rlContainer.innerHTML = `
+    <div class="tech-card" style="margin-bottom: 10px;">
+      <div class="tech-name">Rate Limiting: ${rateLimiting.enforced ? '<span style="color:var(--sev-low-fg);">Enforced</span>' : '<span style="color:var(--sev-med-fg);">Not Detected</span>'}</div>
+      <div class="tech-cat">${rateLimiting.apiRequestsObserved} API requests observed</div>
+      ${rateLimiting.sampleHeader ? `<div class="finding-code" style="margin-top: 6px;">Header: ${escapeHtml(rateLimiting.sampleHeader)}</div>` : '<p style="font-size:11px;color:var(--text-muted);margin-top:4px;">No standard RateLimit or X-RateLimit headers observed on API routes.</p>'}
+    </div>
+  `;
+}
+
+// ========================================================
+// VIEW: SEO & AIO AUDIT
+// ========================================================
+function renderSeoAudit(seo) {
+  if (!seo) return;
+
+  const scoreBadge = $('seo-overall-score');
+  scoreBadge.querySelector('.seo-score-num').textContent = `${seo.score || 0}%`;
+
+  const container = $('seo-pages-container');
+  if (!seo.pages || !seo.pages.length) {
+    container.innerHTML = '<div class="empty-hint">No SEO pages audited.</div>';
+    return;
+  }
+
+  container.innerHTML = seo.pages
+    .map(
+      (p) => `
+    <div class="seo-page-card">
+      <div class="seo-page-head">
+        <div class="seo-page-url">📄 ${escapeHtml(p.url)}</div>
+        <span class="sev-tag ${p.score >= 80 ? 'low' : 'medium'}">${p.score}/100 Score</span>
+      </div>
+
+      <div class="seo-checks-grid">
+        <div class="seo-item">
+          <div class="seo-lbl">Title Tag</div>
+          <div class="seo-val">${escapeHtml(p.title)}</div>
+        </div>
+        <div class="seo-item">
+          <div class="seo-lbl">Meta Description</div>
+          <div class="seo-val">${escapeHtml(p.metaDescription)}</div>
+        </div>
+        <div class="seo-item">
+          <div class="seo-lbl">Primary &lt;h1&gt;</div>
+          <div class="seo-val">${escapeHtml(p.headings.h1[0] || '(None)')}</div>
+        </div>
+        <div class="seo-item">
+          <div class="seo-lbl">Language &amp; Viewport</div>
+          <div class="seo-val">Lang: ${p.htmlLang} · Viewport: ${p.viewport ? '✅' : '❌'}</div>
+        </div>
+        <div class="seo-item">
+          <div class="seo-lbl">OpenGraph &amp; Twitter</div>
+          <div class="seo-val">${p.openGraph.ogTitle ? '✅ OpenGraph' : '❌ No OG'} · ${p.openGraph.twitterCard ? '✅ Twitter' : '❌ No Twitter'}</div>
+        </div>
+        <div class="seo-item">
+          <div class="seo-lbl">Images Missing Alt</div>
+          <div class="seo-val">${p.images.missingAlt} / ${p.images.total} images</div>
+        </div>
+      </div>
+    </div>
+  `
+    )
+    .join('');
+}
+
+// ========================================================
+// VIEW: SECURITY DASHBOARD
+// ========================================================
+function renderDashboard() {
+  const scan = state.currentScan;
+  if (!scan) return;
+
+  const counts = scan.score?.counts || {};
+  $('dash-critical').textContent = counts.critical || 0;
+  $('dash-high').textContent = counts.high || 0;
+  $('dash-medium').textContent = counts.medium || 0;
+  $('dash-total-scans').textContent = state.scansHistory.length || 1;
+  $('dash-monitors-up').textContent = state.monitors.filter((m) => m.status === 'up').length;
+
+  const total = scan.findings?.length || 1;
+  $('sev-bars').innerHTML = `
+    <div style="width: 100%; display: flex; flex-direction: column; gap: 8px;">
+      <div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+          <span>Critical (${counts.critical || 0})</span>
+          <span>${Math.round(((counts.critical || 0) / total) * 100)}%</span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${((counts.critical || 0) / total) * 100}%; background:var(--sev-crit-fg);"></div></div>
+      </div>
+      <div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+          <span>High (${counts.high || 0})</span>
+          <span>${Math.round(((counts.high || 0) / total) * 100)}%</span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${((counts.high || 0) / total) * 100}%; background:var(--sev-high-fg);"></div></div>
+      </div>
+      <div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; margin-bottom:2px;">
+          <span>Medium (${counts.medium || 0})</span>
+          <span>${Math.round(((counts.medium || 0) / total) * 100)}%</span>
+        </div>
+        <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:${((counts.medium || 0) / total) * 100}%; background:var(--sev-med-fg);"></div></div>
+      </div>
+    </div>
+  `;
+}
+
+// ========================================================
+// VIEW: NETWORK DISCOVERY
+// ========================================================
+function setupNetworkDiscovery() {
+  loadNetworkInfo();
+
+  $('net-scan-btn')?.addEventListener('click', async () => {
+    $('net-scan-btn').disabled = true;
+    $('net-scan-btn').innerHTML = '<span class="pulse-dot"></span> Scanning LAN…';
+
+    const es = new EventSource('/api/netdiscovery/scan');
+    es.addEventListener('devices', (ev) => {
+      const data = JSON.parse(ev.data);
+      state.discoveredDevices = data.devices || [];
+      renderDevicesTable();
+    });
+
+    es.addEventListener('device_updated', (ev) => {
+      const { device } = JSON.parse(ev.data);
+      const idx = state.discoveredDevices.findIndex((d) => d.ip === device.ip);
+      if (idx >= 0) state.discoveredDevices[idx] = device;
+      else state.discoveredDevices.push(device);
+      renderDevicesTable();
+    });
+
+    es.addEventListener('done', () => {
+      es.close();
+      $('net-scan-btn').disabled = false;
+      $('net-scan-btn').innerHTML = '<span class="btn-icon">⚡</span> Scan Local Network';
+    });
+
+    es.addEventListener('error', () => {
+      es.close();
+      $('net-scan-btn').disabled = false;
+      $('net-scan-btn').innerHTML = '<span class="btn-icon">⚡</span> Scan Local Network';
+    });
+  });
+}
+
+async function loadNetworkInfo() {
+  try {
+    const [ifacesRes, arpRes] = await Promise.all([
+      fetch('/api/netdiscovery/interfaces'),
+      fetch('/api/netdiscovery/arp'),
+    ]);
+    state.networkInterfaces = await ifacesRes.json();
+    state.discoveredDevices = await arpRes.json();
+
+    renderInterfaces();
+    renderDevicesTable();
+  } catch { /* ignore */ }
+}
+
+function renderInterfaces() {
+  const container = $('ifaces-list');
+  if (!state.networkInterfaces.length) {
+    container.innerHTML = '<div class="empty-hint">No active network interfaces found.</div>';
+    return;
+  }
+  container.innerHTML = state.networkInterfaces
+    .map(
+      (iface) => `
+    <div class="iface-card">
+      <div class="iface-name">${escapeHtml(iface.name)}</div>
+      <div class="iface-ip">${escapeHtml(iface.address)} / ${escapeHtml(iface.netmask)}</div>
+      <div class="iface-mac">${escapeHtml(iface.mac)} (${escapeHtml(iface.vendor || 'Unknown')})</div>
+    </div>
+  `
+    )
+    .join('');
+}
+
+function renderDevicesTable() {
+  const tbody = $('devices-body');
+  $('dev-count-badge').textContent = `${state.discoveredDevices.length} Devices`;
+
+  if (!state.discoveredDevices.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-hint">No devices discovered yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = state.discoveredDevices
+    .map(
+      (d) => `
+    <tr>
+      <td style="font-weight:600; color:var(--text-primary);">${escapeHtml(d.ip)}</td>
+      <td>${escapeHtml(d.mac || '–')}</td>
+      <td><span class="vendor-badge">${escapeHtml(d.vendor || 'Unknown')}</span></td>
+      <td>${escapeHtml(d.hostname || d.interface || '–')}</td>
+      <td>
+        ${
+          d.openPorts && d.openPorts.length
+            ? d.openPorts.map((p) => `<span class="badge">${p.port} (${p.service})</span>`).join(' ')
+            : '<span style="color:var(--text-muted);">No ports scanned</span>'
+        }
+      </td>
+      <td>
+        <button class="btn btn-glass" style="font-size:10px; padding:2px 6px;" onclick="scanHostPortsModal('${d.ip}')">Port Scan</button>
+      </td>
+    </tr>
+  `
+    )
+    .join('');
+}
+
+window.scanHostPortsModal = async (host) => {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  try {
+    const res = await fetch('/api/netdiscovery/scan-host', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ host }),
+    });
+    const data = await res.json();
+    const dev = state.discoveredDevices.find((d) => d.ip === host);
+    if (dev) {
+      dev.openPorts = data.openPorts || [];
+      renderDevicesTable();
+    }
+  } catch (err) {
+    alert(`Port scan error: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Port Scan';
+  }
+};
+
+// ========================================================
+// VIEW: UPTIME MONITORS
+// ========================================================
+function setupMonitors() {
+  $('create-monitor-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = $('mon-name').value.trim();
+    const url = $('mon-url').value.trim();
+    const intervalSeconds = Number($('mon-interval').value);
+    const expectedStatus = Number($('mon-status').value);
+    const keyword = $('mon-keyword').value.trim();
+
+    try {
+      const res = await fetch('/api/monitors', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name, url, intervalSeconds, expectedStatus, keyword }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const newMon = await res.json();
+      state.monitors.push(newMon);
+      renderMonitors();
+      updateMonitorCountBadge();
+      $('monitor-modal').classList.add('hidden');
+    } catch (err) {
+      alert(`Failed to create monitor: ${err.message}`);
+    }
+  });
+
+  loadMonitors();
+}
+
+async function loadMonitors() {
+  try {
+    const res = await fetch('/api/monitors');
+    state.monitors = await res.json();
+    renderMonitors();
+    updateMonitorCountBadge();
+  } catch { /* ignore */ }
+}
+
+function updateMonitorCountBadge() {
+  $('mon-count').textContent = state.monitors.length;
+}
+
+function renderMonitors() {
+  const grid = $('monitors-grid');
+  if (!state.monitors.length) {
+    grid.innerHTML = '<div class="empty-hint">No uptime monitors configured yet. Add one above!</div>';
+    return;
+  }
+
+  grid.innerHTML = state.monitors
+    .map(
+      (m) => `
+    <div class="monitor-card">
+      <div class="mon-head">
+        <div class="mon-name">${escapeHtml(m.name)}</div>
+        <span class="sev-tag ${m.status === 'up' ? 'low' : m.status === 'degraded' ? 'medium' : 'critical'}">${m.status.toUpperCase()}</span>
+      </div>
+      <div class="mon-url" title="${escapeHtml(m.url)}">${escapeHtml(m.url)}</div>
+
+      <div class="mon-sparkline">
+        ${(m.history || [])
+          .slice(-30)
+          .map(
+            (h) => `
+          <div class="spark-bar ${h.status === 'down' ? 'down' : h.status === 'degraded' ? 'deg' : ''}" style="height: ${Math.min(100, Math.max(15, (h.latencyMs || 20) / 10))}%;" title="${h.latencyMs}ms (${h.status})"></div>
+        `
+          )
+          .join('')}
+      </div>
+
+      <div class="mon-stats-row">
+        <div class="mon-stat-col">
+          <div class="mon-stat-val">${m.uptimePercent}%</div>
+          <div class="mon-stat-lbl">Uptime</div>
+        </div>
+        <div class="mon-stat-col">
+          <div class="mon-stat-val">${m.lastLatencyMs || 0}ms</div>
+          <div class="mon-stat-lbl">Latency</div>
+        </div>
+        <div class="mon-stat-col">
+          <div class="mon-stat-val">${m.intervalSeconds}s</div>
+          <div class="mon-stat-lbl">Interval</div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+        <span style="font-size:10px; color:var(--text-muted);">Checked: ${m.lastChecked ? new Date(m.lastChecked).toLocaleTimeString() : 'Never'}</span>
+        <div style="display:flex; gap:4px;">
+          <button class="ghost-btn" title="Check now" onclick="checkMonitorNow('${m.id}')">🔄</button>
+          <button class="ghost-btn" title="Delete" onclick="deleteMonitor('${m.id}')">🗑️</button>
+        </div>
+      </div>
+    </div>
+  `
+    )
+    .join('');
+}
+
+window.checkMonitorNow = async (id) => {
+  await fetch(`/api/monitors/${id}/check`, { method: 'POST' }).catch(() => {});
+};
+
+window.deleteMonitor = async (id) => {
+  if (!confirm('Delete this monitor?')) return;
+  await fetch(`/api/monitors/${id}`, { method: 'DELETE' });
+  state.monitors = state.monitors.filter((m) => m.id !== id);
+  renderMonitors();
+  updateMonitorCountBadge();
+};
+
+// ========================================================
+// VIEW: HTTP LOAD TESTER
+// ========================================================
+function setupLoadTester() {
+  $('loadtest-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = $('lt-url').value.trim();
+    const method = $('lt-method').value;
+    const concurrency = Number($('lt-concurrency').value) || 10;
+    const totalRequests = Number($('lt-total').value) || 50;
+
+    let headers = {};
+    try {
+      if ($('lt-headers').value.trim()) headers = JSON.parse($('lt-headers').value);
+    } catch { /* ignore */ }
+
+    const body = $('lt-body').value.trim() || undefined;
+
+    const securityProbes = {
+      csrf: $('lt-probe-csrf').checked,
+      sqli: $('lt-probe-sqli').checked,
+      xss: $('lt-probe-xss').checked,
+      rateLimit: $('lt-probe-rate').checked,
+    };
+
+    $('lt-start-btn').disabled = true;
+    $('lt-start-btn').innerHTML = '<span class="pulse-dot"></span> Testing in progress…';
+
+    const liveWrap = $('lt-live-container');
+    liveWrap.innerHTML = '<div class="empty-hint">Launching concurrent requests…</div>';
+
+    try {
+      const res = await fetch('/api/loadtest/run', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url, method, concurrency, totalRequests, headers, body, securityProbes }),
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop();
+
+        for (const block of lines) {
+          if (block.includes('event: progress')) {
+            const jsonStr = block.slice(block.indexOf('data: ') + 6);
+            try {
+              const data = JSON.parse(jsonStr);
+              renderLoadTestProgress(data);
+            } catch { /* ignore */ }
+          } else if (block.includes('event: done')) {
+            const jsonStr = block.slice(block.indexOf('data: ') + 6);
+            try {
+              const summary = JSON.parse(jsonStr);
+              renderLoadTestSummary(summary);
+            } catch { /* ignore */ }
+          }
+        }
+      }
+    } catch (err) {
+      liveWrap.innerHTML = `<div class="empty-hint" style="color:var(--sev-crit-fg);">Load test failed: ${escapeHtml(err.message)}</div>`;
+    } finally {
+      $('lt-start-btn').disabled = false;
+      $('lt-start-btn').innerHTML = '<span class="btn-icon">🚀</span> Launch Load Test';
+    }
+  });
+}
+
+function renderLoadTestProgress(p) {
+  const liveWrap = $('lt-live-container');
+  liveWrap.innerHTML = `
+    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; margin-bottom:12px;">
+      <div class="dash-card" style="padding:10px;">
+        <div class="dash-card-val">${p.completed} / ${p.total}</div>
+        <div class="dash-card-lbl">Completed Requests</div>
+      </div>
+      <div class="dash-card" style="padding:10px;">
+        <div class="dash-card-val" style="color:var(--accent-blue);">${p.rps}</div>
+        <div class="dash-card-lbl">RPS</div>
+      </div>
+      <div class="dash-card" style="padding:10px;">
+        <div class="dash-card-val">${p.latestLatency}ms</div>
+        <div class="dash-card-lbl">Latency</div>
+      </div>
+    </div>
+    <div class="progress-bar-wrap"><div class="progress-bar-fill" style="width: ${(p.completed / p.total) * 100}%;"></div></div>
+  `;
+}
+
+function renderLoadTestSummary(s) {
+  const liveWrap = $('lt-live-container');
+  liveWrap.innerHTML = `
+    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:8px; margin-bottom:14px;">
+      <div class="dash-card" style="padding:10px;">
+        <div class="dash-card-val" style="color:var(--accent-blue);">${s.rps}</div>
+        <div class="dash-card-lbl">Average RPS</div>
+      </div>
+      <div class="dash-card" style="padding:10px;">
+        <div class="dash-card-val">${s.latencies.p50}ms</div>
+        <div class="dash-card-lbl">p50 Latency</div>
+      </div>
+      <div class="dash-card" style="padding:10px;">
+        <div class="dash-card-val" style="color:var(--sev-high-fg);">${s.latencies.p95}ms</div>
+        <div class="dash-card-lbl">p95 Latency</div>
+      </div>
+      <div class="dash-card" style="padding:10px;">
+        <div class="dash-card-val" style="color:var(--sev-crit-fg);">${s.latencies.p99}ms</div>
+        <div class="dash-card-lbl">p99 Latency</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Status Distribution</label>
+      <div style="display:flex; gap:6px; flex-wrap:wrap;">
+        ${Object.entries(s.statusCodes)
+          .map(([code, count]) => `<span class="badge" style="font-size:11px; padding:2px 6px;">${code}: ${count}</span>`)
+          .join('')}
+      </div>
+    </div>
+
+    ${
+      s.securityFindings && s.securityFindings.length
+        ? `
+      <div class="box-header" style="margin-top:12px;">
+        <h4 style="color:var(--sev-crit-fg); font-size:12px;">Security Findings (${s.securityFindings.length})</h4>
+      </div>
+      ${s.securityFindings
+        .map(
+          (f) => `
+        <div class="finding-card" style="margin-bottom:6px;">
+          <div class="finding-header">
+            <span class="sev-tag ${f.severity}">${f.severity}</span>
+            <span class="finding-title">${escapeHtml(f.title)}</span>
+          </div>
+          <p class="finding-desc">${escapeHtml(f.description)}</p>
+        </div>
+      `
+        )
+        .join('')}
+    `
+        : '<div style="margin-top:10px; font-size:11px; color:var(--sev-low-fg);">✅ Automated security checks passed.</div>'
+    }
+  `;
+}
+
+// ========================================================
+// VIEW: HTTP INSPECTOR & SSH POKER
+// ========================================================
+function setupInspector() {
+  $('poke-http-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const method = $('poke-method').value;
+    const url = $('poke-url').value.trim();
+    const authType = $('poke-auth-type').value;
+    const authVal = $('poke-auth-val').value.trim();
+    const rawHeaders = $('poke-headers').value.trim();
+    const body = $('poke-body').value.trim() || undefined;
+
+    const headers = {};
+    if (rawHeaders) {
+      rawHeaders.split('\n').forEach((line) => {
+        const idx = line.indexOf(':');
+        if (idx > 0) headers[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+      });
+    }
+
+    let auth = null;
+    if (authType === 'bearer') auth = { type: 'bearer', token: authVal };
+    else if (authType === 'basic') {
+      const [username, password] = authVal.split(':');
+      auth = { type: 'basic', username, password };
+    } else if (authType === 'apikey') {
+      const [header, value] = authVal.split(':');
+      auth = { type: 'apikey', header: header?.trim(), value: value?.trim() };
+    }
+
+    const resWrap = $('poke-response-wrap');
+    resWrap.innerHTML = '<div class="empty-hint">Sending request…</div>';
+
+    try {
+      const res = await fetch('/api/poke', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url, method, headers, body, auth }),
+      });
+      const data = await res.json();
+
+      resWrap.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div>
+            <span class="sev-tag ${data.status < 400 ? 'low' : 'critical'}">${data.status} ${escapeHtml(data.statusText || '')}</span>
+            <span style="font-family:var(--font-mono); font-size:11px; margin-left:6px; color:var(--text-muted);">${data.timingMs}ms · ${formatBytes(data.sizeBytes)}</span>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Response Headers</label>
+          <div class="finding-code" style="max-height: 120px;">${Object.entries(data.headers || {})
+            .map(([k, v]) => `${k}: ${v}`)
+            .join('\n')}</div>
+        </div>
+
+        <div class="form-group">
+          <label>Response Body (${escapeHtml(data.contentType || 'unknown')})</label>
+          <div class="finding-code" style="max-height: 180px;">${escapeHtml(data.body || '(Empty body)')}</div>
+        </div>
+      `;
+    } catch (err) {
+      resWrap.innerHTML = `<div class="empty-hint" style="color:var(--sev-crit-fg);">${escapeHtml(err.message)}</div>`;
+    }
+  });
+
+  $('poke-ssh-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const host = $('ssh-host').value.trim();
+    const port = Number($('ssh-port').value) || 22;
+    const timeoutMs = Number($('ssh-timeout').value) || 4000;
+
+    const resWrap = $('ssh-response-wrap');
+    resWrap.innerHTML = '<div class="empty-hint">Connecting to SSH service…</div>';
+
+    try {
+      const res = await fetch('/api/poke/ssh', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ host, port, timeoutMs }),
+      });
+      const data = await res.json();
+
+      resWrap.innerHTML = `
+        <div style="margin-bottom: 10px;">
+          <span class="sev-tag ${data.reachable ? 'low' : 'critical'}">${data.reachable ? 'ONLINE' : 'UNREACHABLE'}</span>
+          <span style="font-family:var(--font-mono); font-size:11px; margin-left:6px; color:var(--text-muted);">${data.latencyMs}ms latency</span>
+        </div>
+
+        ${
+          data.reachable
+            ? `
+          <div class="form-group">
+            <label>Identification Banner</label>
+            <div class="finding-code">${escapeHtml(data.banner)}</div>
+          </div>
+          <div class="seo-checks-grid" style="margin-top:8px;">
+            <div class="seo-item">
+              <div class="seo-lbl">SSH Version</div>
+              <div class="seo-val">${escapeHtml(data.sshVersion || '–')}</div>
+            </div>
+            <div class="seo-item">
+              <div class="seo-lbl">Operating System</div>
+              <div class="seo-val">${escapeHtml(data.osHint || 'Standard Linux/BSD')}</div>
+            </div>
+          </div>
+        `
+            : `<div class="empty-hint" style="color:var(--sev-crit-fg);">${escapeHtml(data.error || 'Connection refused')}</div>`
+        }
+      `;
+    } catch (err) {
+      resWrap.innerHTML = `<div class="empty-hint" style="color:var(--sev-crit-fg);">${escapeHtml(err.message)}</div>`;
+    }
+  });
+}
+
+// ========================================================
+// VIEW: DATABASE CONNECTION TESTER
+// ========================================================
+function setupDatabaseTester() {
+  $('db-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const type = $('db-type').value;
+    const host = $('db-host').value.trim();
+    const port = $('db-port').value.trim() || undefined;
+
+    const resWrap = $('db-results-wrap');
+    resWrap.innerHTML = '<div class="empty-hint">Executing protocol handshake…</div>';
+
+    try {
+      const res = await fetch('/api/db/test', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type, host, port }),
+      });
+      const data = await res.json();
+
+      resWrap.innerHTML = `
+        <div style="margin-bottom: 10px;">
+          <span class="sev-tag ${data.connected ? 'low' : 'critical'}">${data.status}</span>
+          <span style="font-family:var(--font-mono); font-size:11px; margin-left:6px; color:var(--text-muted);">${data.latencyMs}ms · Port ${data.port}</span>
+        </div>
+        <div class="form-group">
+          <label>Server Version &amp; Handshake</label>
+          <div class="finding-code">${escapeHtml(data.serverVersion || data.error || '')}</div>
+        </div>
+        <div class="finding-desc">${escapeHtml(data.details || '')}</div>
+      `;
+    } catch (err) {
+      resWrap.innerHTML = `<div class="empty-hint" style="color:var(--sev-crit-fg);">${escapeHtml(err.message)}</div>`;
+    }
+  });
+
+  $('db-stress-btn')?.addEventListener('click', async () => {
+    const type = $('db-type').value;
+    const host = $('db-host').value.trim();
+    const port = $('db-port').value.trim() || undefined;
+
+    const resWrap = $('db-results-wrap');
+    resWrap.innerHTML = '<div class="empty-hint">Executing 30 concurrent connection probes…</div>';
+
+    try {
+      const res = await fetch('/api/db/stress', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type, host, port, concurrency: 10, totalQueries: 30 }),
+      });
+      const data = await res.json();
+
+      resWrap.innerHTML = `
+        <div class="box-header">
+          <h4>Database Stress Test Complete</h4>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:12px;">
+          <div class="dash-card" style="padding:10px;">
+            <div class="dash-card-val" style="color:var(--sev-low-fg);">${data.successful} / ${data.totalAttempts}</div>
+            <div class="dash-card-lbl">Success Rate</div>
+          </div>
+          <div class="dash-card" style="padding:10px;">
+            <div class="dash-card-val">${data.avgLatencyMs}ms</div>
+            <div class="dash-card-lbl">Average Latency</div>
+          </div>
+          <div class="dash-card" style="padding:10px;">
+            <div class="dash-card-val">${data.maxLatencyMs}ms</div>
+            <div class="dash-card-lbl">Max Latency</div>
+          </div>
+        </div>
+      `;
+    } catch (err) {
+      resWrap.innerHTML = `<div class="empty-hint" style="color:var(--sev-crit-fg);">${escapeHtml(err.message)}</div>`;
+    }
+  });
+}
+
+// ========================================================
+// HISTORY SIDEBAR
+// ========================================================
+function setupHistory() {
+  $('refresh-history')?.addEventListener('click', loadHistory);
+  loadHistory();
+}
+
+async function loadHistory() {
+  try {
+    const res = await fetch('/api/scans');
+    state.scansHistory = await res.json();
+    renderHistory();
+  } catch { /* ignore */ }
+}
+
+function renderHistory() {
+  const list = $('history');
+  if (!state.scansHistory.length) {
+    list.innerHTML = '<li class="history-empty">No previous scans found.</li>';
+    return;
+  }
+
+  list.innerHTML = state.scansHistory
+    .map(
+      (s) => `
+    <li class="history-item ${state.currentScan?.id === s.id ? 'active' : ''}" onclick="loadScanFromHistory('${s.id}')">
+      <div class="history-target">${escapeHtml(s.target)}</div>
+      <div class="history-meta">
+        <span class="history-grade grade-${s.score?.grade || 'C'}">${s.score?.grade || '–'} (${s.score?.score ?? '–'})</span>
+        <span>${s.startedAt ? new Date(s.startedAt).toLocaleDateString() : ''}</span>
+      </div>
+    </li>
+  `
+    )
+    .join('');
+}
+
+window.loadScanFromHistory = async (id) => {
+  switchView('scanner');
+  $('empty').classList.add('hidden');
+  $('scan-view').classList.remove('hidden');
+
+  try {
+    const res = await fetch(`/api/scans/${id}`);
+    const scan = await res.json();
+    state.currentScan = scan;
+    renderFullScan(scan);
+    renderHistory();
+  } catch (err) {
+    alert(`Failed to load scan: ${err.message}`);
+  }
+};
+
+// ========================================================
+// UTILITIES
+// ========================================================
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
