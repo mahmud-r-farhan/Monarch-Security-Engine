@@ -135,10 +135,15 @@ export function resolveProviderConfig(aiConfig = null, env = process.env) {
     || DEFAULT_MODEL[provider]
     || '';
   const apiKey = provider === 'none' ? '' : effective[PROVIDER_ENV[provider]?.key || ''] || effective.AI_API_KEY || '';
+  let rawBaseUrl = effective.OPENAI_COMPATIBLE_BASE_URL || effective.OPENAI_BASE_URL || effective.AI_BASE_URL || 'https://api.openai.com/v1';
+  while (typeof rawBaseUrl === 'string' && rawBaseUrl.endsWith('/')) {
+    rawBaseUrl = rawBaseUrl.slice(0, -1);
+  }
+
   const baseUrl = provider === 'ollama'
     ? normalizeOllamaBaseUrl(effective.OLLAMA_BASE_URL || effective.OLLAMA_HOST || '')
     : provider === 'openai-compatible'
-    ? (effective.OPENAI_COMPATIBLE_BASE_URL || effective.OPENAI_BASE_URL || effective.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '')
+    ? rawBaseUrl
     : null;
 
   const timeoutMs = clampTimeoutMs(effective.AI_TIMEOUT_MS);

@@ -5,6 +5,7 @@ import dns from 'node:dns/promises';
 import { exec, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolveVendor, normalizeMac } from './oui.js';
+import { assertTargetAllowed } from '../engine/safety.js';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -614,24 +615,29 @@ export async function inspectHostDetails(hostInput) {
   if (httpPort || /[a-z]/i.test(host)) {
     const scheme = (httpPort?.port === 443 || httpPort?.port === 8443) ? 'https' : 'http';
     const targetUrl = `${scheme}://${resolvedIp}:${httpPort?.port || 80}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3000);
     try {
-      const res = await fetch(targetUrl, { method: 'HEAD', signal: controller.signal, redirect: 'manual' }).catch(async () => {
-        return await fetch(targetUrl, { method: 'GET', signal: controller.signal, redirect: 'manual' });
-      });
-      clearTimeout(timer);
-      const headers = {};
-      res.headers.forEach((v, k) => { headers[k] = v; });
-      webInfo = {
-        url: targetUrl,
-        status: res.status,
-        server: headers['server'] || headers['x-powered-by'] || null,
-        title: null,
-        headers,
-      };
+      await assertTargetAllowed(targetUrl);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 3000);
+      try {
+        const res = await fetch(targetUrl, { method: 'HEAD', signal: controller.signal, redirect: 'manual' }).catch(async () => {
+          return await fetch(targetUrl, { method: 'GET', signal: controller.signal, redirect: 'manual' });
+        });
+        clearTimeout(timer);
+        const headers = {};
+        res.headers.forEach((v, k) => { headers[k] = v; });
+        webInfo = {
+          url: targetUrl,
+          status: res.status,
+          server: headers['server'] || headers['x-powered-by'] || null,
+          title: null,
+          headers,
+        };
+      } catch {
+        clearTimeout(timer);
+      }
     } catch {
-      clearTimeout(timer);
+      /* target not allowed or invalid */
     }
   }
 

@@ -77,9 +77,14 @@ async function probe(provider, { env, aiConfig, fetchImpl, deep }) {
       return { provider, ok: false, latencyMs: 0, error: 'No API key configured', hint: `Add a ${PROVIDER_ENV[provider]?.key || 'n'} API key or pick another provider.` };
     }
 
+    let targetBase = cfg.baseUrl || 'https://api.openai.com/v1';
+    while (typeof targetBase === 'string' && targetBase.endsWith('/')) {
+      targetBase = targetBase.slice(0, -1);
+    }
+
     const endpoints = {
       openrouter: { url: 'https://openrouter.ai/api/v1/models', headers: { authorization: `Bearer ${key}`, 'HTTP-Referer': 'https://github.com/mahmud-r-farhan/Monarch-Security-Engine' } },
-      'openai-compatible': { url: `${(cfg.baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '')}/models`, headers: key ? { authorization: `Bearer ${key}` } : {} },
+      'openai-compatible': { url: `${targetBase}/models`, headers: key ? { authorization: `Bearer ${key}` } : {} },
       openai: { url: 'https://api.openai.com/v1/models', headers: { authorization: `Bearer ${key}` } },
       anthropic: { url: 'https://api.anthropic.com/v1/models', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01' } },
       gemini: { url: `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`, headers: {} },

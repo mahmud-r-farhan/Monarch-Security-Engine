@@ -5,7 +5,10 @@ export const openaiCompatible = {
   id: 'openai-compatible',
 
   async chat({ apiKey, baseUrl, model, system, prompt, fetchImpl, timeoutMs }) {
-    const targetBase = (baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+    let targetBase = baseUrl || 'https://api.openai.com/v1';
+    while (typeof targetBase === 'string' && targetBase.endsWith('/')) {
+      targetBase = targetBase.slice(0, -1);
+    }
     return openAiChat({
       baseUrl: targetBase,
       apiKey: apiKey || '',
@@ -18,7 +21,10 @@ export const openaiCompatible = {
   },
 
   async listModels({ apiKey, baseUrl, fetchImpl, timeoutMs }) {
-    const targetBase = (baseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+    let targetBase = baseUrl || 'https://api.openai.com/v1';
+    while (typeof targetBase === 'string' && targetBase.endsWith('/')) {
+      targetBase = targetBase.slice(0, -1);
+    }
     return openAiListModels({
       baseUrl: targetBase,
       apiKey: apiKey || '',
