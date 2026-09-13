@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/ci.yml/badge.svg)](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/ci.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Zero native deps](https://img.shields.io/badge/native%20deps-0-success)
 
 </div>
@@ -40,7 +40,7 @@ Monarch provides a comprehensive cyber operations and security auditing dashboar
 
 ```mermaid
 graph TB
-    subgraph Frontend["Frontend Dashboard (Modern Cyber UI)"]
+    subgraph Frontend["Frontend (TypeScript + Vite → dist/)"]
         UI["Main Navigation & Controls"]
         ScannerView["Scanner & Findings View"]
         TechView["Tech Stack & Rates View"]
@@ -110,19 +110,52 @@ Monarch works **100% out of the box without any `.env` file** using its built-in
 cp .env.example .env
 ```
 
-### 3. Launch Monarch
+### 3. Build the Frontend
+Vite compiles `src/frontend/` (TypeScript source) into `dist/` which the server automatically serves:
+```bash
+npm run build
+```
+
+### 4. Launch Monarch
 ```bash
 npm start
 # 🦋 Monarch Security Engine → http://localhost:3000
 ```
 
-### 4. Practice with Demo Target
+### 5. Practice with Demo Target
 In a separate terminal, launch the intentionally vulnerable practice application:
 ```bash
 npm run demo:target
 # Demo target running at http://localhost:4000
 ```
 Then point Monarch at `http://localhost:4000` to see vulnerability findings, AI insights, technology stack detection, and network traffic!
+
+---
+
+## 📁 Project Structure
+
+```
+Monarch-Security-Engine/
+├── src/
+│   ├── frontend/          # TypeScript + Vite frontend source
+│   │   ├── index.html     # Single-page application shell
+│   │   ├── main.ts        # Application orchestrator (TypeScript)
+│   │   ├── styles.css     # Design system & component styles
+│   │   └── types.ts       # Shared TypeScript type definitions
+│   ├── engine/            # Security scan & audit engine
+│   ├── modules/           # Ops modules (network, monitor, load, db)
+│   ├── ai/                # AI provider adapters (OpenRouter, OpenAI, etc.)
+│   ├── report/            # Report renderers (Markdown, HTML, JSON)
+│   ├── server.js          # Express + WebSocket server
+│   └── env.js             # .env loader
+├── dist/                  # Built frontend (Vite output — auto-served)
+├── demo/                  # Intentionally vulnerable demo target
+├── test/                  # Unit & integration tests
+├── reports/               # Generated scan report storage
+├── vite.config.js         # Vite build config (root: src/frontend)
+├── tsconfig.json          # TypeScript config
+└── package.json
+```
 
 ---
 
@@ -144,6 +177,7 @@ Then point Monarch at `http://localhost:4000` to see vulnerability findings, AI 
 - **Social & AI Crawling**: Audits OpenGraph (`og:*`), Twitter Cards, structured JSON-LD schemas, language tags, and responsive viewports.
 
 ### 4. Local Network Discovery
+- **Active ICMP Sweeps**: Pings entire subnets to discover live hosts not yet in the ARP cache.
 - **ARP Device Table**: Reads local ARP cache across Windows, Linux, and macOS.
 - **Hardware Vendor Resolution**: Matches MAC address prefixes against an extensive IEEE OUI database (Apple, Raspberry Pi, Cisco, Intel, Espressif, Samsung, etc.).
 - **TCP Port Scanning**: High-speed asynchronous port scanning with service banner identification.
@@ -239,4 +273,4 @@ Includes 18 automated unit and integration tests covering:
 
 ## 📜 License
 
-MIT License with Custom Defense Research & Usage Terms © 2026 [Mahmud Rahman](https://github.com/mahmud-r-farhan) — see [LICENSE](LICENSE).
+[Apache License 2.0](LICENSE) © 2026 [Mahmud Rahman](https://github.com/mahmud-r-farhan)

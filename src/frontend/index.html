@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monarch Security Engine — Web Vulnerability Scanner &amp; Network Defense Platform</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦋</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<!-- Top Navigation Bar -->
+<header class="topbar">
+  <div class="brand">
+    <div class="logo-icon">🦋</div>
+    <div class="brand-text">
+      <div class="brand-name">Monarch Security Engine</div>
+    </div>
+  </div>
+
+  <!-- Primary Target Scanner Input (Expanded Width) -->
+  <form id="scan-form" class="scan-form" autocomplete="off">
+    <div class="input-wrap">
+      <span class="input-icon">🎯</span>
+      <input id="target" type="text" placeholder="Enter target URL, domain or IP (e.g. http://localhost:4000 for local demo)" required spellcheck="false">
+    </div>
+    <select id="engine" class="select-styled select-compact" title="Crawler engine">
+      <option value="fetch">⚡ Fetch</option>
+      <option value="playwright">🌐 Playwright</option>
+    </select>
+    <div class="pages-wrap" title="Max crawl pages">
+      <span class="pages-label">Pages:</span>
+      <input id="pages" type="number" min="1" max="200" value="25" title="Maximum pages to crawl">
+    </div>
+    <button id="scan-btn" type="submit" class="btn btn-primary">
+      <span class="btn-icon">⚡</span> Scan Target
+    </button>
+  </form>
+
+  <div class="top-actions">
+    <button id="ai-config-btn" class="btn btn-glass" title="Configure AI Provider &amp; Model">
+      <span class="ai-dot"></span>
+      <span id="ai-config-label">AI: OpenRouter</span>
+      <span class="gear-icon">⚙️</span>
+    </button>
+    <!-- Replaced with interactive developer & application information button -->
+    <button id="dev-modal-btn" class="status-btn" title="View Developer Profile &amp; Application Details">
+      <span class="pulse-dot"></span>
+      <span id="health-text">System Active · Info</span>
+    </button>
+  </div>
+</header>
+
+<!-- Main Global Navigation Tabs -->
+<nav class="main-nav">
+  <div class="nav-container">
+    <button class="nav-tab active" data-view="scanner">
+      <span class="tab-icon">🛡️</span> Scanner &amp; Findings
+    </button>
+    <button class="nav-tab" data-view="dashboard">
+      <span class="tab-icon">📊</span> Security Dashboard
+    </button>
+    <button class="nav-tab" data-view="wpadmin">
+      <span class="tab-icon">🔒</span> WP &amp; Admin Security
+    </button>
+    <button class="nav-tab" data-view="techstack">
+      <span class="tab-icon">⚡</span> Tech Stack &amp; Rates
+    </button>
+    <button class="nav-tab" data-view="seo">
+      <span class="tab-icon">🔍</span> AIO &amp; SEO Audit
+    </button>
+    <button class="nav-tab" data-view="netdiscovery">
+      <span class="tab-icon">📡</span> Network Discovery
+    </button>
+    <button class="nav-tab" data-view="monitor">
+      <span class="tab-icon">⏱️</span> Uptime Monitor <span class="counter-badge" id="mon-count">0</span>
+    </button>
+    <button class="nav-tab" data-view="loadtest">
+      <span class="tab-icon">🚀</span> HTTP Load Tester
+    </button>
+    <button class="nav-tab" data-view="inspector">
+      <span class="tab-icon">🔌</span> HTTP &amp; SSH Poke
+    </button>
+    <button class="nav-tab" data-view="database">
+      <span class="tab-icon">🗄️</span> DB Connection Tester
+    </button>
+  </div>
+</nav>
+
+<!-- Main Application Workspace (Fixed Left Sidebar Layout for Desktop / Laptop) -->
+<div class="app-workspace">
+  <!-- Left Fixed History Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="side-head">
+      <span class="side-title"><span class="icon">📁</span> Scan History</span>
+      <button id="refresh-history" class="ghost-btn" title="Refresh history">↻</button>
+    </div>
+    <ul id="history" class="history-list">
+      <li class="history-empty">No previous scans found.</li>
+    </ul>
+    <div class="side-foot">
+      <div class="disclaimer-badge">DEFENSIVE RESEARCH ONLY</div>
+      <p class="disclaimer-text">Ensure explicit authorization before testing remote targets.</p>
+    </div>
+  </aside>
+
+  <!-- Right Dynamic Workspace Area -->
+  <main class="view-content">
+
+    <!-- ======================================================== -->
+    <!-- VIEW 1: SCANNER & FINDINGS                               -->
+    <!-- ======================================================== -->
+    <section class="view-pane active" id="view-scanner">
+      <!-- Empty Hero State -->
+      <div id="empty" class="empty-hero">
+        <div class="hero-card">
+          <div class="hero-butterfly">🦋</div>
+          <h1 class="hero-title">Monarch Security Engine</h1>
+          <p class="hero-subtitle">Automated Web Vulnerability Scanner, Attack Surface Mapper, and Network Defense Platform.</p>
+
+          <div class="feature-grid">
+            <div class="feat-card">
+              <div class="feat-icon">🛡️</div>
+              <h3>60+ Passive Checks</h3>
+              <p>CSP, CORS, JWTs, cookies, DOM-XSS sinks, and secret credential leaks.</p>
+            </div>
+            <div class="feat-card">
+              <div class="feat-icon">🤖</div>
+              <h3>AI &amp; Offline ML Rules</h3>
+              <p>Default OpenRouter multi-model audits or offline ML-kit heuristic evaluation.</p>
+            </div>
+            <div class="feat-card">
+              <div class="feat-icon">🔒</div>
+              <h3>WP &amp; Admin Auditing</h3>
+              <p>WordPress login detection, XML-RPC exposure checks, and user enumeration testing.</p>
+            </div>
+            <div class="feat-card">
+              <div class="feat-icon">📡</div>
+              <h3>Network Operations</h3>
+              <p>Local ARP device discovery, MAC hardware vendor lookup, and port mapping.</p>
+            </div>
+          </div>
+
+          <div class="quick-start-box">
+            <span class="hint-badge">DEMO TARGET</span>
+            <span>Local test application: run <code>npm run demo:target</code> and scan <code>http://localhost:4000</code></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Scan Details Area -->
+      <div id="scan-view" class="scan-view hidden">
+        <!-- Target Overview Banner -->
+        <div class="summary-bar">
+          <div class="grade-badge" id="grade">–</div>
+          <div class="summary-main">
+            <div class="summary-target" id="s-target">https://target.example</div>
+            <div class="summary-meta" id="s-meta">Crawl complete · 0 pages · 0 requests</div>
+            <div class="progress-bar-wrap"><div id="progress-bar" class="progress-bar-fill"></div></div>
+            <div class="live-status" id="live-status">Waiting for events…</div>
+          </div>
+          <div class="sev-counts" id="sev-counts"></div>
+          <div class="export-actions" id="export"></div>
+        </div>
+
+        <!-- Scanner Sub-Tabs -->
+        <nav class="sub-tabs">
+          <button data-subtab="findings" class="sub-tab active">Findings <span class="badge" id="t-findings">0</span></button>
+          <button data-subtab="ai" class="sub-tab">🤖 AI Remediation Plan</button>
+          <button data-subtab="network" class="sub-tab">🌐 DevTools Network <span class="badge" id="t-network">0</span></button>
+          <button data-subtab="cookies" class="sub-tab">🍪 Cookies &amp; Storage</button>
+          <button data-subtab="inventory" class="sub-tab">📦 Asset Inventory</button>
+        </nav>
+
+        <!-- Sub-Panels -->
+        <div class="sub-panels">
+          <!-- Findings Panel -->
+          <div class="sub-panel active" id="panel-findings">
+            <div class="toolbar">
+              <div class="search-input-wrap">
+                <span class="search-icon">🔎</span>
+                <input id="f-filter" placeholder="Filter vulnerabilities by title, category, or CWE…">
+              </div>
+              <div class="chips" id="sev-chips"></div>
+            </div>
+            <div id="findings" class="findings-container"></div>
+          </div>
+
+          <!-- AI Insights Panel -->
+          <div class="sub-panel" id="panel-ai">
+            <div id="ai" class="ai-container"></div>
+          </div>
+
+          <!-- DevTools Network Panel -->
+          <div class="sub-panel" id="panel-network">
+            <div class="toolbar">
+              <div class="search-input-wrap">
+                <span class="search-icon">🔎</span>
+                <input id="n-filter" placeholder="Filter URLs or mime types…">
+              </div>
+              <div class="chips" id="type-chips"></div>
+              <div class="net-summary" id="net-summary"></div>
+            </div>
+            <div class="net-split">
+              <div class="net-table-wrap">
+                <table class="net-table">
+                  <thead>
+                    <tr>
+                      <th style="width: 45px;">#</th>
+                      <th style="width: 70px;">Method</th>
+                      <th style="width: 60px;">Status</th>
+                      <th style="width: 80px;">Type</th>
+                      <th style="width: 70px;">Size</th>
+                      <th style="width: 70px;">Time</th>
+                      <th>URL / Resource</th>
+                    </tr>
+                  </thead>
+                  <tbody id="net-body"></tbody>
+                </table>
+              </div>
+              <div class="net-detail hidden" id="net-detail"></div>
+            </div>
+          </div>
+
+          <!-- Cookies & Storage Panel -->
+          <div class="sub-panel" id="panel-cookies">
+            <div id="cookies" class="storage-container"></div>
+          </div>
+
+          <!-- Inventory Panel -->
+          <div class="sub-panel" id="panel-inventory">
+            <div id="inventory" class="inventory-container"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 2: SECURITY OPERATIONS DASHBOARD                    -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-dashboard">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>Security Operations Dashboard</h2>
+          <p>Holistic posture metrics across active scans, severity distributions, and threat trends.</p>
+        </div>
+      </div>
+
+      <div class="dash-stat-cards">
+        <div class="dash-card">
+          <div class="dash-card-icon red">🚨</div>
+          <div class="dash-card-val" id="dash-critical">0</div>
+          <div class="dash-card-lbl">Critical Flaws</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-icon orange">⚠️</div>
+          <div class="dash-card-val" id="dash-high">0</div>
+          <div class="dash-card-lbl">High Severity</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-icon yellow">⚡</div>
+          <div class="dash-card-val" id="dash-medium">0</div>
+          <div class="dash-card-lbl">Medium Severity</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-icon cyan">📊</div>
+          <div class="dash-card-val" id="dash-total-scans">0</div>
+          <div class="dash-card-lbl">Total Scans Run</div>
+        </div>
+        <div class="dash-card">
+          <div class="dash-card-icon green">⏱️</div>
+          <div class="dash-card-val" id="dash-monitors-up">0</div>
+          <div class="dash-card-lbl">Monitored Endpoints</div>
+        </div>
+      </div>
+
+      <div class="dashboard-charts-grid">
+        <div class="chart-box">
+          <div class="chart-title">Severity Breakdown</div>
+          <div id="severity-chart-container" class="chart-content">
+            <div class="chart-bars" id="sev-bars">
+              <div class="empty-hint">Scan a target to view severity distribution.</div>
+            </div>
+          </div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">Top Security Categories</div>
+          <div id="category-chart-container" class="chart-content">
+            <ul class="cat-list" id="cat-list">
+              <li class="empty-hint">Scan a target to view security categories.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 3: WORDPRESS, PHP & ADMIN LOGIN SECURITY (NEW)       -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-wpadmin">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>🔒 WordPress, PHP &amp; Admin Login Security</h2>
+          <p>Detection of administrative consoles (/wp-login.php, /wp-admin, /phpmyadmin), XML-RPC abuse, and author user enumeration.</p>
+        </div>
+      </div>
+
+      <div class="wpadmin-layout">
+        <!-- Status Cards -->
+        <div class="wp-summary-cards">
+          <div class="dash-card">
+            <div class="dash-card-lbl">WordPress Detection</div>
+            <div class="dash-card-val" id="wp-detected" style="font-size: 18px; margin-top: 4px;">–</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-lbl">XML-RPC Interface</div>
+            <div class="dash-card-val" id="wp-xmlrpc" style="font-size: 18px; margin-top: 4px;">–</div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-lbl">User Enumeration</div>
+            <div class="dash-card-val" id="wp-user-enum" style="font-size: 18px; margin-top: 4px;">–</div>
+          </div>
+        </div>
+
+        <!-- Exposed Endpoints & Results -->
+        <div class="dashboard-charts-grid" style="margin-top: 16px;">
+          <div class="chart-box">
+            <div class="chart-title">Administrative Login Endpoints</div>
+            <div id="wp-endpoints-container">
+              <div class="empty-hint">Scan a target to probe for exposed admin panels and login portals.</div>
+            </div>
+          </div>
+
+          <div class="chart-box">
+            <div class="chart-title">Discovered Usernames &amp; Enumeration Results</div>
+            <div id="wp-users-container">
+              <div class="empty-hint">Author query and REST API user checks will display here.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WordPress & PHP Hardening Guide -->
+        <div class="chart-box" style="margin-top: 16px;">
+          <div class="chart-title">WordPress &amp; PHP Defense Recommendations</div>
+          <div class="wp-guide-grid">
+            <div class="feat-card">
+              <h3>1. Disable XML-RPC</h3>
+              <p>Add to <code>.htaccess</code> or Nginx to prevent multicall brute-force:</p>
+              <pre class="finding-code">&lt;Files xmlrpc.php&gt;
+  Require all denied
+&lt;/Files&gt;</pre>
+            </div>
+            <div class="feat-card">
+              <h3>2. Block Author Enumeration</h3>
+              <p>Prevent scanning authors via <code>/?author=N</code> by redirecting in <code>functions.php</code>:</p>
+              <pre class="finding-code">add_action('template_redirect', function() {
+  if (is_author()) { wp_redirect(home_url(), 301); exit; }
+});</pre>
+            </div>
+            <div class="feat-card">
+              <h3>3. Protect /wp-login.php</h3>
+              <p>Place the login page behind HTTP Basic Auth, VPN, or IP allow-listing to neutralize credential stuffing bots.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 4: SITE TECHNOLOGY STACK & RATE LIMITS               -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-techstack">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>⚡ Site Technology Stack &amp; API Rate Limits</h2>
+          <p>Fingerprinted web frameworks, CMS platforms, servers, CDNs, and observed API throttling policies.</p>
+        </div>
+      </div>
+
+      <div class="tech-dashboard-grid">
+        <div class="tech-box">
+          <div class="box-header">
+            <h3>Discovered Technologies &amp; Frameworks</h3>
+            <span class="badge" id="tech-badge-count">0</span>
+          </div>
+          <div id="tech-list" class="tech-grid">
+            <div class="empty-hint">Scan a target to detect its frameworks, libraries, and web infrastructure.</div>
+          </div>
+        </div>
+
+        <div class="tech-box">
+          <div class="box-header">
+            <h3>API Calling Rate &amp; Throttling Policy</h3>
+          </div>
+          <div id="ratelimit-info" class="rate-info-container">
+            <div class="empty-hint">Scan an API target to analyze rate limiting headers and burst policies.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 5: AIO & SEO AUDITING TAB                           -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-seo">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>🔍 AI Crawlability (AIO) &amp; Technical SEO Audit</h2>
+          <p>Metadata tags, OpenGraph sharing, structured JSON-LD schemas, and heading semantic hierarchies.</p>
+        </div>
+        <div class="seo-score-badge" id="seo-overall-score">
+          <span class="seo-score-num">–</span>
+          <span class="seo-score-lbl">SEO Score</span>
+        </div>
+      </div>
+
+      <div id="seo-pages-container" class="seo-pages-list">
+        <div class="empty-hint">Scan a target to generate a full technical SEO and AI crawlability audit.</div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 6: LOCAL NETWORK DISCOVERY                          -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-netdiscovery">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>📡 Local Network Device Discovery &amp; Port Mapper</h2>
+          <p>Multi-target subnet discovery (CIDR / IP ranges), active ICMP sweeps, default gateway detection, and layered TCP + UDP port mapping.</p>
+        </div>
+      </div>
+
+      <!-- Discovery Controls Card -->
+      <div class="net-controls-card">
+        <div class="net-controls-grid">
+          <div class="form-group" style="flex: 2;">
+            <label>Target Subnet / IP Range / Hostnames</label>
+            <div class="form-row">
+              <select id="net-segment-select" class="select-styled" style="width: 200px;">
+                <option value="">Detecting subnets…</option>
+              </select>
+              <input id="net-target-input" placeholder="e.g. 192.168.0.0/24, 10.0.0.1-10.0.0.50, nas.local" spellcheck="false" style="flex: 1;">
+            </div>
+            <span class="form-subtext">Supports CIDR (192.168.1.0/24), ranges (10.0.0.1-10.0.0.50), or comma-separated lists.</span>
+          </div>
+
+          <div class="form-group" style="width: 140px;">
+            <label>Scan Mode</label>
+            <select id="net-mode-select" class="select-styled">
+              <option value="fast" selected>Fast (Top 30 TCP)</option>
+              <option value="full">Full (Common TCP + UDP)</option>
+              <option value="custom">Custom Ports</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="align-self: flex-end;">
+            <button id="net-scan-btn" class="btn btn-primary" style="height: 34px; padding: 0 16px;">
+              <span class="btn-icon">⚡</span> Start Discovery
+            </button>
+          </div>
+        </div>
+
+        <!-- Custom Ports Row (conditionally visible) -->
+        <div id="net-custom-row" class="form-row hidden" style="margin-top: 10px; border-top: 1px solid var(--border-default); padding-top: 10px;">
+          <div class="form-group" style="flex: 1;">
+            <label>Custom TCP Ports (comma-separated)</label>
+            <input id="net-custom-tcp" placeholder="e.g. 21, 22, 80, 443, 3000, 8080, 27017">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Custom UDP Ports (comma-separated)</label>
+            <input id="net-custom-udp" placeholder="e.g. 53, 67, 123, 161, 1900, 5353">
+          </div>
+        </div>
+
+        <!-- Live Scan Progress Bar -->
+        <div id="net-progress-wrap" class="net-progress-wrap hidden">
+          <div class="net-progress-bar">
+            <div id="net-progress-fill" class="net-progress-fill" style="width: 0%;"></div>
+          </div>
+          <div id="net-status-text" class="net-status-text">Preparing discovery sweep…</div>
+        </div>
+      </div>
+
+      <!-- Host Interfaces -->
+      <div class="net-ifaces-card">
+        <div class="box-header">
+          <h3>Host Network Interfaces</h3>
+          <span id="net-gateway-badge" class="badge" style="display: none;">Gateway: –</span>
+        </div>
+        <div id="ifaces-list" class="ifaces-grid">
+          <div class="empty-hint">Loading network interfaces…</div>
+        </div>
+      </div>
+
+      <!-- Discovered Devices -->
+      <div class="net-devices-card">
+        <div class="box-header" style="flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h3>Discovered Network Devices &amp; Port Map</h3>
+            <span class="badge" id="dev-count-badge">0 Devices</span>
+          </div>
+
+          <!-- Protocol Legend & Search Bar -->
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="proto-legend">
+              <span class="legend-item"><span class="legend-dot tcp"></span> TCP</span>
+              <span class="legend-item"><span class="legend-dot udp"></span> UDP</span>
+              <span class="legend-item"><span class="legend-dot icmp"></span> ICMP</span>
+            </div>
+            <input id="dev-search-input" placeholder="🔍 Filter IP, hostname, vendor…" style="width: 180px; padding: 4px 8px; font-size: 11px;">
+            <button id="dev-export-csv" class="btn btn-glass" style="font-size: 11px; padding: 4px 10px;">Export CSV</button>
+            <button id="dev-export-json" class="btn btn-glass" style="font-size: 11px; padding: 4px 10px;">Export JSON</button>
+            <button id="dev-clear-btn" class="btn btn-glass" style="font-size: 11px; padding: 4px 10px;">Clear</button>
+          </div>
+        </div>
+
+        <div class="net-table-wrap">
+          <table class="net-table" id="devices-table">
+            <thead>
+              <tr>
+                <th style="width: 150px;">IP Address</th>
+                <th style="width: 150px;">MAC Address</th>
+                <th style="width: 170px;">Hardware Vendor (OUI)</th>
+                <th style="width: 160px;">Hostname / Role</th>
+                <th style="width: 100px;">Latency</th>
+                <th>Open Services (TCP &amp; UDP)</th>
+                <th style="width: 110px; text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="devices-body">
+              <tr><td colspan="7" class="empty-hint">Configure a target subnet above and click "Start Discovery".</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 7: UPTIME MONITOR                                   -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-monitor">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>⏱️ Uptime &amp; Response Latency Monitor</h2>
+          <p>Continuous synthetic health checks, response time sparklines, keyword validation, and live WebSocket push.</p>
+        </div>
+        <div class="hero-actions">
+          <button id="add-monitor-btn" class="btn btn-primary">
+            <span class="btn-icon">+</span> Add Endpoint Monitor
+          </button>
+        </div>
+      </div>
+
+      <div id="monitors-grid" class="monitors-grid">
+        <div class="empty-hint">No uptime monitors configured yet. Add your first endpoint above!</div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 8: HTTP LOAD TESTER                                 -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-loadtest">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>🚀 High-Performance HTTP Load Tester &amp; Security Prober</h2>
+          <p>Stress-test API endpoints, measure RPS and latency percentiles (p50/p95/p99), and inject automated CSRF, SQLi &amp; XSS probes.</p>
+        </div>
+      </div>
+
+      <div class="loadtest-layout">
+        <div class="lt-config-card">
+          <h3>Load Test Configuration</h3>
+          <form id="loadtest-form" class="lt-form">
+            <div class="form-group">
+              <label>Target URL</label>
+              <input id="lt-url" type="url" placeholder="https://api.example.com/health" required spellcheck="false">
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>HTTP Method</label>
+                <select id="lt-method" class="select-styled">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="HEAD">HEAD</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Concurrency</label>
+                <input id="lt-concurrency" type="number" min="1" max="100" value="10">
+              </div>
+              <div class="form-group">
+                <label>Total Requests</label>
+                <input id="lt-total" type="number" min="5" max="2000" value="100">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Custom Headers (JSON)</label>
+              <textarea id="lt-headers" rows="2" placeholder='{"Authorization": "Bearer ...", "Content-Type": "application/json"}'></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>Request Body (for POST/PUT)</label>
+              <textarea id="lt-body" rows="3" placeholder='{"query": "ping"}'></textarea>
+            </div>
+
+            <div class="security-probes-box">
+              <div class="probe-title">Automated Security Probes</div>
+              <label class="checkbox-label"><input type="checkbox" id="lt-probe-csrf" checked> Check CSRF / Origin validation bypass</label>
+              <label class="checkbox-label"><input type="checkbox" id="lt-probe-sqli" checked> Check SQL injection parameter error disclosure</label>
+              <label class="checkbox-label"><input type="checkbox" id="lt-probe-xss" checked> Check reflected XSS payload sanitization</label>
+              <label class="checkbox-label"><input type="checkbox" id="lt-probe-rate" checked> Verify rate-limiting burst throttling</label>
+            </div>
+
+            <button type="submit" id="lt-start-btn" class="btn btn-primary btn-block">
+              <span class="btn-icon">🚀</span> Launch Load Test
+            </button>
+          </form>
+        </div>
+
+        <div class="lt-results-card">
+          <h3>Load Test Metrics &amp; Percentiles</h3>
+          <div id="lt-live-container" class="lt-metrics-container">
+            <div class="empty-hint">Configure target and launch test to view live RPS, percentiles, and security probe findings.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 9: HTTP & SSH INSPECTOR / POKER                     -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-inspector">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>🔌 HTTP Inspector &amp; SSH Service Poker</h2>
+          <p>Craft custom HTTP/HTTPS requests with granular auth headers, inspect raw responses, or test SSH connectivity and grab server banners.</p>
+        </div>
+      </div>
+
+      <div class="inspector-tabs">
+        <button class="insp-tab active" data-target="insp-http">🌐 HTTP / REST Inspector</button>
+        <button class="insp-tab" data-target="insp-ssh">🔑 SSH Banner &amp; Connection Tester</button>
+      </div>
+
+      <div class="insp-pane active" id="insp-http">
+        <div class="inspector-layout">
+          <div class="insp-card">
+            <h3>Request Builder</h3>
+            <form id="poke-http-form">
+              <div class="form-row">
+                <select id="poke-method" class="select-styled" style="width: 100px;">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="PATCH">PATCH</option>
+                  <option value="HEAD">HEAD</option>
+                  <option value="OPTIONS">OPTIONS</option>
+                </select>
+                <input id="poke-url" type="url" placeholder="https://api.example.com/v1/resource" required style="flex: 1;">
+              </div>
+
+              <div class="form-group">
+                <label>Authentication</label>
+                <div class="form-row">
+                  <select id="poke-auth-type" class="select-styled" style="width: 130px;">
+                    <option value="none">No Auth</option>
+                    <option value="bearer">Bearer Token</option>
+                    <option value="basic">Basic Auth</option>
+                    <option value="apikey">API Key Header</option>
+                  </select>
+                  <input id="poke-auth-val" placeholder="Token, or user:pass, or Header: Value" style="flex: 1;">
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Headers (Key: Value per line)</label>
+                <textarea id="poke-headers" rows="2" placeholder="Accept: application/json&#10;X-Custom-Header: value"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Request Body</label>
+                <textarea id="poke-body" rows="3" placeholder='{"hello": "world"}'></textarea>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-block">
+                <span class="btn-icon">⚡</span> Send Request
+              </button>
+            </form>
+          </div>
+
+          <div class="insp-card">
+            <h3>Response Inspector</h3>
+            <div id="poke-response-wrap" class="poke-res-wrap">
+              <div class="empty-hint">Send a request to inspect response headers, body, latency, and status.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="insp-pane" id="insp-ssh">
+        <div class="inspector-layout">
+          <div class="insp-card">
+            <h3>SSH Connection &amp; Banner Tester</h3>
+            <form id="poke-ssh-form">
+              <div class="form-group">
+                <label>Host / IP Address / Domain</label>
+                <input id="ssh-host" placeholder="192.168.1.1 or server.example.com" required spellcheck="false">
+              </div>
+              <div class="form-group">
+                <label>Port (Default: 22)</label>
+                <input id="ssh-port" type="number" value="22" min="1" max="65535">
+              </div>
+              <div class="form-group">
+                <label>Timeout (ms)</label>
+                <input id="ssh-timeout" type="number" value="4000" min="500" max="15000">
+              </div>
+              <button type="submit" class="btn btn-primary btn-block">
+                <span class="btn-icon">🔑</span> Test SSH Port &amp; Grab Banner
+              </button>
+            </form>
+          </div>
+
+          <div class="insp-card">
+            <h3>SSH Service Analysis</h3>
+            <div id="ssh-response-wrap" class="poke-res-wrap">
+              <div class="empty-hint">Enter host to test SSH port reachability, handshake latency, and identification banner.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================== -->
+    <!-- VIEW 10: DATABASE CONNECTION TESTER                      -->
+    <!-- ======================================================== -->
+    <section class="view-pane" id="view-database">
+      <div class="section-hero">
+        <div class="section-title-wrap">
+          <h2>🗄️ Database Connection Tester &amp; Stress Benchmark</h2>
+          <p>Verify network reachability and wire protocol handshakes for PostgreSQL, MySQL, MongoDB, Redis, and MSSQL databases.</p>
+        </div>
+      </div>
+
+      <div class="inspector-layout">
+        <div class="insp-card">
+          <h3>Database Configuration</h3>
+          <form id="db-form">
+            <div class="form-group">
+              <label>Database Type</label>
+              <select id="db-type" class="select-styled">
+                <option value="postgres">PostgreSQL (Default: 5432)</option>
+                <option value="mysql">MySQL / MariaDB (Default: 3306)</option>
+                <option value="mongodb">MongoDB (Default: 27017)</option>
+                <option value="redis">Redis (Default: 6379)</option>
+                <option value="mssql">Microsoft SQL Server (Default: 1433)</option>
+              </select>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group" style="flex: 2;">
+                <label>Host / IP</label>
+                <input id="db-host" value="localhost" required spellcheck="false">
+              </div>
+              <div class="form-group" style="flex: 1;">
+                <label>Port</label>
+                <input id="db-port" type="number" placeholder="Default">
+              </div>
+            </div>
+
+            <div class="form-actions-row" style="display:flex; gap:8px; margin-top:14px;">
+              <button type="submit" id="db-test-btn" class="btn btn-primary" style="flex: 1;">
+                <span class="btn-icon">🔌</span> Test Connection
+              </button>
+              <button type="button" id="db-stress-btn" class="btn btn-glass" style="flex: 1;">
+                <span class="btn-icon">⚡</span> Stress Test (30x)
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div class="insp-card">
+          <h3>Connection Handshake &amp; Stress Results</h3>
+          <div id="db-results-wrap" class="poke-res-wrap">
+            <div class="empty-hint">Choose database parameters and click "Test Connection" to perform wire protocol handshake.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: DEVELOPER & APPLICATION INFORMATION (NEW)         -->
+<!-- ======================================================== -->
+<div class="modal-backdrop hidden" id="dev-modal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span class="modal-icon">👤</span> Developer &amp; Application Profile
+      </div>
+      <button class="modal-close-btn" id="dev-modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <!-- Live GitHub Profile Card -->
+      <div class="dev-profile-card">
+        <img id="dev-avatar" class="dev-avatar" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👨‍💻</text></svg>" alt="Developer Avatar">
+        <div class="dev-info">
+          <h3 id="dev-name" class="dev-name">Mahmud Rahman Farhan</h3>
+          <div id="dev-handle" class="dev-handle">@mahmud-r-farhan</div>
+          <p id="dev-bio" class="dev-bio">Software Engineer &amp; Security Researcher</p>
+          <div class="dev-links">
+            <a id="dev-github-link" href="https://github.com/mahmud-r-farhan" target="_blank" rel="noopener noreferrer" class="btn btn-glass" style="font-size: 11px; padding: 4px 10px;">GitHub Profile ↗</a>
+            <a id="dev-repo-link" href="https://github.com/mahmud-r-farhan/Monarch-Security-Engine" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="font-size: 11px; padding: 4px 10px;">Repository ↗</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Application Runtime Stats -->
+      <div class="app-info-grid" style="margin-top: 16px;">
+        <div class="seo-item">
+          <div class="seo-lbl">Application</div>
+          <div class="seo-val">Monarch Security Engine</div>
+        </div>
+        <div class="seo-item">
+          <div class="seo-lbl">Engine Core</div>
+          <div class="seo-val" id="dev-app-engine">Node.js + Express</div>
+        </div>
+        <div class="seo-item">
+          <div class="seo-lbl">Intelligence Mode</div>
+          <div class="seo-val" id="dev-app-ai">OpenRouter / ML-Kit Rules</div>
+        </div>
+        <div class="seo-item">
+          <div class="seo-lbl">License</div>
+          <div class="seo-val">Apache 2.0</div>
+        </div>
+      </div>
+
+      <!-- Upcoming Mobile Announcement -->
+      <div class="mobile-notice-box">
+        <span class="notice-icon">📱</span>
+        <span>Mobile version coming soon, stay tune with repo!</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: AI PROVIDER & MODEL CONFIGURATION                 -->
+<!-- ======================================================== -->
+<div class="modal-backdrop hidden" id="ai-modal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span class="modal-icon">⚙️</span> Configure AI Intelligence Provider
+      </div>
+      <button class="modal-close-btn" id="ai-modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-desc">
+        Monarch can run completely offline without any AI keys using its <strong>ML-Kit heuristic rules engine</strong>. Alternatively, configure <strong>OpenRouter</strong> (default recommended), <strong>OpenAI</strong>, <strong>Anthropic</strong>, or <strong>Google Gemini</strong> below. Keys are kept in your browser session and never saved to plaintext server logs.
+      </p>
+
+      <form id="ai-config-form">
+        <div class="form-group">
+          <label for="ai-provider-select">AI Provider</label>
+          <select id="ai-provider-select" class="select-styled">
+            <option value="openrouter">OpenRouter (Default · Multi-Model LLM)</option>
+            <option value="openai">OpenAI (GPT-4o, GPT-4o-mini)</option>
+            <option value="anthropic">Anthropic (Claude 3.5 Sonnet / Haiku)</option>
+            <option value="gemini">Google Gemini (Gemini 1.5 Flash)</option>
+            <option value="none">Offline ML-Kit Heuristic Classifier (No API Key Needed)</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="ai-key-group">
+          <label for="ai-key-input">API Key</label>
+          <div class="input-wrap">
+            <input id="ai-key-input" type="password" placeholder="sk-or-v1-..." autocomplete="off">
+          </div>
+          <span class="form-subtext" id="ai-key-hint">Enter your OpenRouter API key from openrouter.ai</span>
+        </div>
+
+        <div class="form-group" id="ai-model-group">
+          <label for="ai-model-input">Model Name</label>
+          <input id="ai-model-input" value="deepseek/deepseek-r1-distill-qwen-7b" placeholder="deepseek/deepseek-r1-distill-qwen-7b">
+          <span class="form-subtext">Common models: <code>deepseek/deepseek-r1-distill-qwen-7b</code>, <code>openai/gpt-4o-mini</code>, <code>anthropic/claude-3.5-haiku</code></span>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn-glass" id="ai-clear-btn">Use Offline ML-Kit</button>
+          <button type="submit" class="btn btn-primary">Save Configuration</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================== -->
+<!-- MODAL: ADD UPTIME MONITOR                                -->
+<!-- ======================================================== -->
+<div class="modal-backdrop hidden" id="monitor-modal">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span class="modal-icon">⏱️</span> Add Uptime &amp; Health Monitor
+      </div>
+      <button class="modal-close-btn" id="mon-modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="create-monitor-form">
+        <div class="form-group">
+          <label>Friendly Name</label>
+          <input id="mon-name" placeholder="Production API, Main App, etc.">
+        </div>
+        <div class="form-group">
+          <label>Target URL *</label>
+          <input id="mon-url" type="url" placeholder="https://api.myapp.example/health" required spellcheck="false">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Interval</label>
+            <select id="mon-interval" class="select-styled">
+              <option value="15">Every 15 seconds</option>
+              <option value="30" selected>Every 30 seconds</option>
+              <option value="60">Every 1 minute</option>
+              <option value="300">Every 5 minutes</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Expected HTTP Status</label>
+            <input id="mon-status" type="number" value="200">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Expected Keyword in Response Body (Optional)</label>
+          <input id="mon-keyword" placeholder="e.g. ok, pong, status:healthy">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-glass" id="mon-cancel-btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create Monitor</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./main.ts"></script>
+</body>
+</html>
