@@ -109,15 +109,26 @@ let running = 0;
 // Runtime in-memory AI configuration
 let runtimeAiConfig = null;
 
+function getReportFilePath(id) {
+  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  const baseDir = path.resolve(REPORT_DIR);
+  const filePath = path.resolve(baseDir, `${id}.json`);
+  if (!filePath.startsWith(baseDir + path.sep)) return null;
+  return filePath;
+}
+
 async function persist(scan) {
   await fs.mkdir(REPORT_DIR, { recursive: true });
-  await fs.writeFile(path.join(REPORT_DIR, `${scan.id}.json`), JSON.stringify(scan));
+  const filePath = getReportFilePath(scan.id);
+  if (!filePath) return;
+  await fs.writeFile(filePath, JSON.stringify(scan));
 }
 
 async function loadFromDisk(id) {
-  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  const filePath = getReportFilePath(id);
+  if (!filePath) return null;
   try {
-    return JSON.parse(await fs.readFile(path.join(REPORT_DIR, `${id}.json`), 'utf8'));
+    return JSON.parse(await fs.readFile(filePath, 'utf8'));
   } catch {
     return null;
   }
