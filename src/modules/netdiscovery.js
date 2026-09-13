@@ -370,6 +370,62 @@ export function parseArpOutput(output) {
 /* TCP & UDP Port Probing with Banners                                */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Parse port ranges or lists (e.g. "80,443,8000-8005") into an array of port numbers
+ */
+export function parsePortList(input) {
+  if (Array.isArray(input)) return input.map(Number).filter(n => !Number.isNaN(n) && n > 0 && n <= 65535);
+  if (typeof input !== 'string') return [];
+  const ports = new Set();
+  const parts = input.split(',').map(s => s.trim()).filter(Boolean);
+  for (const part of parts) {
+    if (part.includes('-')) {
+      const [startStr, endStr] = part.split('-').map(s => s.trim());
+      const start = parseInt(startStr, 10);
+      const end = parseInt(endStr, 10);
+      if (!Number.isNaN(start) && !Number.isNaN(end) && start <= end) {
+        for (let p = Math.max(1, start); p <= Math.min(65535, end); p++) {
+          ports.add(p);
+        }
+      }
+    } else {
+      const p = parseInt(part, 10);
+      if (!Number.isNaN(p) && p > 0 && p <= 65535) {
+        ports.add(p);
+      }
+    }
+  }
+  return Array.from(ports).sort((a, b) => a - b);
+}
+
+/**
+ * Infer operating system hints from device banner, vendor, and open ports
+ */
+export function inferOsFromDevice(device) {
+  if (!device) return 'Unknown';
+  const openPorts = device.openPorts || [];
+  const ports = openPorts.map(p => p.port);
+  const vendor = (device.vendor || '').toLowerCase();
+  const banners = openPorts.map(p => (p.banner || '').toLowerCase()).join(' ');
+
+  if (vendor.includes('apple') || banners.includes('darwin') || ports.includes(548) || ports.includes(62078)) {
+    return 'Apple macOS/iOS';
+  }
+  if (vendor.includes('microsoft') || ports.includes(135) || ports.includes(445) || ports.includes(3389) || banners.includes('windows')) {
+    return 'Windows';
+  }
+  if (banners.includes('ubuntu') || banners.includes('debian') || banners.includes('centos') || banners.includes('linux') || banners.includes('openssh')) {
+    return 'Linux';
+  }
+  if (vendor.includes('cisco') || vendor.includes('ubiquiti') || vendor.includes('tp-link') || vendor.includes('netgear') || vendor.includes('synology') || vendor.includes('qnap')) {
+    return 'Embedded Network Appliance';
+  }
+  if (ports.includes(22)) {
+    return 'Linux/Unix';
+  }
+  return 'Unknown';
+}
+
 export function checkTcpPort(host, port, timeoutMs = 700) {
   return new Promise((resolve) => {
     const started = Date.now();
@@ -382,13 +438,30 @@ export function checkTcpPort(host, port, timeoutMs = 700) {
       settled = true;
       socket.destroy();
       const latencyMs = Date.now() - started;
+
+      let extractedBanner = banner.trim().slice(0, 150) || null;
+      let serviceExtra = TCP_SERVICES[port] || 'Custom';
+
+      // SSH version regex parsing
+      if (extractedBanner) {
+        const sshMatch = extractedBanner.match(/^SSH-([\d.]+)-(\S+)/i);
+        if (sshMatch) {
+          serviceExtra = `SSH (${sshMatch[2]})`;
+        }
+        // HTTP Server header extraction
+        const serverMatch = extractedBanner.match(/server:\s*([^\r\n]+)/i);
+        if (serverMatch) {
+          extractedBanner = `Server: ${serverMatch[1].trim()}`;
+        }
+      }
+
       resolve({
         port,
         proto: 'tcp',
         open,
         latencyMs,
-        service: TCP_SERVICES[port] || 'Custom',
-        banner: banner.trim().slice(0, 150) || null,
+        service: serviceExtra,
+        banner: extractedBanner,
       });
     };
 
@@ -397,8 +470,8 @@ export function checkTcpPort(host, port, timeoutMs = 700) {
     socket.on('connect', () => {
       // Elicit banner on common protocols
       try {
-        if (port === 80 || port === 8080 || port === 3000 || port === 5000) {
-          socket.write('HEAD / HTTP/1.0\r\n\r\n');
+        if ([80, 8080, 3000, 5000, 7000, 8000, 8006, 8081, 8443].includes(port)) {
+          socket.write('HEAD / HTTP/1.0\r\nHost: ' + host + '\r\n\r\n');
         } else {
           socket.write('\r\n');
         }
@@ -703,8 +776,8 @@ export async function runNetworkDiscovery({
     scanTcp = Object.keys(TCP_SERVICES).map(Number);
     scanUdp = COMMON_UDP_PORTS;
   } else if (mode === 'custom') {
-    scanTcp = Array.isArray(customTcp) && customTcp.length ? customTcp : FAST_TCP_PORTS;
-    scanUdp = Array.isArray(customUdp) && customUdp.length ? customUdp : [];
+    scanTcp = typeof customTcp === 'string' ? parsePortList(customTcp) : (Array.isArray(customTcp) && customTcp.length ? customTcp : FAST_TCP_PORTS);
+    scanUdp = typeof customUdp === 'string' ? parsePortList(customUdp) : (Array.isArray(customUdp) && customUdp.length ? customUdp : []);
   }
 
   onEvent({

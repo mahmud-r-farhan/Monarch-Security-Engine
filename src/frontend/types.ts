@@ -83,6 +83,7 @@ export interface UptimeMonitor {
   status: 'up' | 'down' | 'degraded' | 'paused';
   uptimePercent: number;
   lastLatencyMs?: number;
+  lastChecked?: string;
   history?: Array<{
     timestamp: number;
     status: 'up' | 'down' | 'degraded';

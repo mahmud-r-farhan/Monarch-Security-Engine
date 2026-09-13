@@ -6,7 +6,8 @@ on:
   pull_request:
 
 jobs:
-  test:
+  typecheck-and-test:
+    name: Test & Typecheck (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -17,11 +18,17 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm ci --omit=optional
-      - run: npm run typecheck
-      - run: npm test
+      - name: Install Dependencies
+        run: npm ci
+      - name: TypeScript Type Check
+        run: npm run typecheck
+      - name: Build Web Frontend Application
+        run: npm run build
+      - name: Execute Node.js Test Suite
+        run: npm test
 
   lint:
+    name: Code Linting & Static Sanity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,50 +36,53 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --omit=optional
-      - name: Check for unused code patterns
+      - name: Install Dependencies
+        run: npm ci
+      - name: Check for unused code patterns & console leaks
         run: |
-          echo "Checking for console.log leaks in production code..."
+          echo "Checking for console.log leaks in core engine code..."
           ! grep -r "console\.log" src/engine/ src/modules/ --include="*.js" | grep -v "console\.error" | grep -v "console\.warn" || echo "Found console.log - consider using proper logging"
-          echo "Checking for TODO/FIXME..."
+          echo "Checking for TODO/FIXME comments..."
           grep -r "TODO\|FIXME" src/ --include="*.js" --include="*.ts" || echo "No TODOs found"
 
   self-scan:
-    name: Scan demo target (end-to-end)
+    name: Scan demo target (end-to-end) & SARIF artifact
     runs-on: ubuntu-latest
-    needs: test
+    needs: typecheck-and-test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --omit=optional
+      - name: Install Dependencies
+        run: npm ci
       - name: Start vulnerable demo target
         run: (npm run demo:target &) && sleep 2
-      - name: Run Monarch against it
+      - name: Run Monarch scanner CLI against demo target
         run: |
           set +e
           node src/cli.js http://localhost:4000 --no-ai --out audit
           code=$?
           echo "exit code: $code"
-          # The demo target is intentionally broken — assert we *found* criticals.
+          # The demo target is intentionally broken — assert we found findings (exit code 2).
           test "$code" -eq 2
-      - uses: actions/upload-artifact@v4
+      - name: Upload Audit Reports Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: demo-audit
+          name: demo-audit-sarif
           path: audit
 
   python-powerup:
-    name: Test Python power-up
+    name: Test Python power-up service
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install deps
-        run: pip install requests || true
+      - name: Install dependencies
+        run: pip install -r services/python/requirements.txt || pip install requests
       - name: Run Python scanner self-test
         run: |
           cd services/python
@@ -80,7 +90,7 @@ jobs:
           echo "Python scanner OK"
 
   go-powerup:
-    name: Test Go power-up
+    name: Test Go power-up service
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
