@@ -223,6 +223,7 @@ export async function fetchLogged(url, { log, timeoutMs, type = 'document', meth
       if ([301, 302, 303, 307, 308].includes(res.status) && h.location) {
         redirectChain.push(current);
         current = new URL(h.location, current).href;
+        await assertTargetAllowed(current);
         continue;
       }
       return { status: res.status, headers: h, body, finalUrl: current, redirectChain };

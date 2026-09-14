@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPORT_DIR = path.resolve(process.env.REPORT_DIR || path.join(__dirname, '..', 'reports'));
@@ -49,8 +50,10 @@ class ScanRegistry {
     return this.loadFromDisk(id);
   }
 
-  createRecord(target) {
-    return { status: 'running', events: [], listeners: new Set(), createdAt: Date.now(), target };
+  createRecord(target, id = randomUUID()) {
+    const rec = { id, status: 'running', events: [], listeners: new Set(), createdAt: Date.now(), target };
+    this.scans.set(id, rec);
+    return rec;
   }
 
   /** Periodic TTL cleanup of expired scans (memory + disk). */

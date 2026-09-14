@@ -14,9 +14,9 @@ import { checkWpAdminSecurity } from './checks/wpadmin.js';
  * Orchestrates a full audit: crawl → checks → score → AI insights.
  * Emits progress events via `onEvent` so UIs can stream the lifecycle in real time.
  */
-export async function runScan(input, { maxPages, timeoutMs, engine, onEvent = () => {}, ai = true, aiConfig = null, env = process.env } = {}) {
+export async function runScan(input, { id: customId, maxPages, timeoutMs, engine, onEvent = () => {}, ai = true, aiConfig = null, env = process.env } = {}) {
   const target = normalizeTarget(input);
-  const id = randomUUID();
+  const id = customId || randomUUID();
   const startedAt = new Date();
   const log = new NetworkLog();
   const unsub = log.onEntry(entry => onEvent({ type: 'network', entry }));

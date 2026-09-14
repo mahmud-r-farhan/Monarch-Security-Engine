@@ -41,13 +41,9 @@ router.post('/scans', scanLimiter, async (req, res) => {
   }
 
   const rec = scanRegistry.createRecord(target);
-  let id = null;
+  const id = rec.id;
 
   const onEvent = ev => {
-    if (ev.type === 'status' && ev.stage === 'init' && !id) {
-      id = ev.message.match(/Scan ([0-9a-f-]{36})/)?.[1];
-      if (id) scans.set(id, rec);
-    }
     rec.events.push(ev);
     // Keep only last 500 events to prevent memory bloat
     if (rec.events.length > 500) rec.events.shift();
@@ -56,7 +52,8 @@ router.post('/scans', scanLimiter, async (req, res) => {
 
   scanRegistry.running++;
 
-  const p = runScan(target, {
+  runScan(target, {
+    id,
     maxPages: clamp(Number(maxPages) || undefined, 1, 200),
     engine: engine === 'playwright' ? 'playwright' : engine === 'fetch' ? 'fetch' : undefined,
     ai: ai !== false,
@@ -77,9 +74,6 @@ router.post('/scans', scanLimiter, async (req, res) => {
       for (const l of rec.listeners) l({ type: 'closed' });
     });
 
-  await Promise.race([p, new Promise(r => setTimeout(r, 80))]);
-
-  if (!id) return res.status(500).json({ error: rec.error || 'failed to start scan' });
   res.status(202).json({ id, status: rec.status, error: rec.error });
 });
 

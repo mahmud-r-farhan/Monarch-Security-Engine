@@ -44,7 +44,11 @@ export async function enumerateSubdomains(domain, { concurrency = 10, timeoutMs 
       const sub = queue[index++];
       const fqdn = `${sub}.${baseDomain}`;
       try {
-        const addrs = await dns.resolve(fqdn);
+        let addrs = await dns.resolve(fqdn).catch(() => null);
+        if (!addrs || !addrs.length) {
+          const lookedUp = await dns.lookup(fqdn, { all: true }).catch(() => []);
+          addrs = lookedUp.map(a => a.address);
+        }
         if (addrs && addrs.length) {
           results.push({
             subdomain: fqdn,

@@ -256,13 +256,17 @@ export async function getDefaultRoute() {
 /* ------------------------------------------------------------------ */
 
 export function ping(ip, timeoutMs = 800) {
+  if (!ip || typeof ip !== 'string' || !net.isIP(ip.trim())) {
+    return Promise.resolve({ alive: false, rtt: null });
+  }
+  const cleanIp = ip.trim();
   let args;
   if (PLATFORM === 'win32') {
-    args = ['-n', '1', '-w', String(timeoutMs), ip];
+    args = ['-n', '1', '-w', String(timeoutMs), cleanIp];
   } else if (PLATFORM === 'darwin') {
-    args = ['-c', '1', '-t', String(Math.max(1, Math.round(timeoutMs / 1000))), ip];
+    args = ['-c', '1', '-t', String(Math.max(1, Math.round(timeoutMs / 1000))), cleanIp];
   } else {
-    args = ['-c', '1', '-W', String(Math.max(1, Math.round(timeoutMs / 1000))), ip];
+    args = ['-c', '1', '-W', String(Math.max(1, Math.round(timeoutMs / 1000))), cleanIp];
   }
 
   return new Promise((resolve) => {
