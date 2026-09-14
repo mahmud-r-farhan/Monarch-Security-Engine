@@ -4,6 +4,7 @@ import path from 'node:path';
 import { runScan } from './engine/scanner.js';
 import { renderMarkdown } from './report/markdown.js';
 import { renderHtml } from './report/html.js';
+import { renderSarif } from './report/sarif.js';
 import { loadEnv } from './env.js';
 
 loadEnv();
@@ -50,10 +51,12 @@ try {
     await fs.writeFile(path.join(dir, 'report.json'), JSON.stringify(scan, null, 2));
     await fs.writeFile(path.join(dir, 'report.md'), renderMarkdown(scan));
     await fs.writeFile(path.join(dir, 'report.html'), renderHtml(scan));
+    await fs.writeFile(path.join(dir, 'report.sarif'), JSON.stringify(renderSarif(scan), null, 2));
     if (!quiet) process.stderr.write(`\n  Reports written to ${dir}\n`);
   }
   if (format === 'json') console.log(JSON.stringify(scan, null, 2));
   else if (format === 'md') console.log(renderMarkdown(scan));
+  else if (format === 'sarif') console.log(JSON.stringify(renderSarif(scan), null, 2));
   else {
     const c = scan.score.counts;
     console.log(`\n  Target   ${scan.target}\n  Score    ${scan.score.score}/100  (grade ${scan.score.grade})  risk: ${scan.insights?.riskLevel || 'n/a'}\n  Findings ${scan.findings.length}  →  critical ${c.critical || 0} · high ${c.high || 0} · medium ${c.medium || 0} · low ${c.low || 0} · info ${c.info || 0}\n  Crawl    ${scan.crawl.pages.length} pages · ${scan.networkSummary.requests} requests · ${(scan.durationMs / 1000).toFixed(1)}s · engine=${scan.crawl.engine}\n`);

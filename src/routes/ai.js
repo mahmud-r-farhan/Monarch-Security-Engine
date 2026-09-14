@@ -77,7 +77,7 @@ router.get('/ai/providers', (req, res) => {
 
 /** Live model ids for the UI datalist. OpenRouter's catalog is public. */
 router.post('/ai/models', async (req, res) => {
-  const { provider, apiKey } = req.body || {};
+  const { provider, apiKey, baseUrl } = req.body || {};
   if (!provider || !PROVIDERS.includes(provider)) {
     return res.status(400).json({ error: 'Invalid provider' });
   }
@@ -86,11 +86,13 @@ router.post('/ai/models', async (req, res) => {
   }
   const saved = req.app.locals.runtimeAiConfig;
   const key = apiKey || saved?.apiKey || '';
+  const customBase = (baseUrl || saved?.baseUrl || process.env.OPENAI_COMPATIBLE_BASE_URL || 'http://localhost:1234/v1').replace(/\/+$/, '');
   const endpoints = {
     openrouter: { url: 'https://openrouter.ai/api/v1/models', headers: { 'HTTP-Referer': 'https://github.com/mahmud-r-farhan/Monarch-Security-Engine' } },
     openai: { url: 'https://api.openai.com/v1/models', headers: {} },
     anthropic: { url: 'https://api.anthropic.com/v1/models', headers: { 'anthropic-version': '2023-06-01' } },
     gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/models', headers: {} },
+    'openai-compatible': { url: `${customBase}/models`, headers: {} },
   };
   const ep = endpoints[provider];
   const url = provider === 'gemini' && key ? `${ep.url}?key=${encodeURIComponent(key)}` : ep.url;

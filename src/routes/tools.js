@@ -6,6 +6,8 @@ import { testDbConnection, runDbLoadTest } from '../modules/database.js';
 import { analyzeTLS, checkSecurityHeaders } from '../modules/tls.js';
 import { enumerateSubdomains, parseSitemap, analyzeRobotsTxt } from '../modules/subdomain.js';
 import { analyzePageSpeed, quickStatusCheck } from '../modules/speed.js';
+import { checkWpAdminSecurity } from '../engine/checks/wpadmin.js';
+import { checkPowerUpServices } from '../modules/powerup.js';
 import { discoveryLimiter } from '../middleware/rateLimiter.js';
 
 /**
@@ -234,6 +236,30 @@ router.post('/db/stress', async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+/* -------------------------- WP & Admin Recon -------------------------- */
+
+router.post('/recon/wpadmin', async (req, res) => {
+  const { target, timeoutMs } = req.body || {};
+  if (!target) return res.status(400).json({ error: 'target is required' });
+  try {
+    const result = await checkWpAdminSecurity(target, { timeoutMs: Number(timeoutMs) || 4000 });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+/* -------------------------- Power-Up Status --------------------------- */
+
+router.get('/powerup/status', async (req, res) => {
+  try {
+    const status = await checkPowerUpServices();
+    res.json(status);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
