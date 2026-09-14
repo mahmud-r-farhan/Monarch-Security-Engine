@@ -48,7 +48,8 @@ export function checkApiSecurity(crawlResult, networkLog) {
     }
 
     // 3. Sensitive Data in Response Body
-    const bodyStr = typeof entry.response?.body === 'string' ? entry.response.body : '';
+    const rawBody = entry.response?.body;
+    const bodyStr = typeof rawBody === 'string' ? rawBody : (Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : '');
     if (bodyStr) {
       if (/"password"\s*:\s*"[^"]+"/i.test(bodyStr) || /"api[_-]?key"\s*:\s*"[^"]+"/i.test(bodyStr) || /"secret"\s*:\s*"[^"]+"/i.test(bodyStr)) {
         findings.push({

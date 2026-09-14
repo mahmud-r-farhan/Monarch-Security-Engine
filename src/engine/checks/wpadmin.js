@@ -98,7 +98,9 @@ export async function checkWpAdminSecurity(targetUrl, { timeoutMs = 4000 } = {})
 
       // Check XML-RPC
       if (item.path === '/xmlrpc.php') {
-        if (status === 200 || status === 405) {
+        const text = (await res.text().catch(() => '')).slice(0, 1000);
+        const isRealXmlRpc = /XML-RPC server accepts POST requests only|xmlrpc|<methodResponse|<fault/i.test(text);
+        if (isRealXmlRpc && (status === 200 || status === 405)) {
           xmlRpcExposed = true;
           isWordpress = true;
           findings.push({
@@ -117,6 +119,38 @@ export async function checkWpAdminSecurity(targetUrl, { timeoutMs = 4000 } = {})
 
       // Check exposed admin login or panels
       if (status >= 200 && status < 400) {
+        const bodyText = status === 200 ? (await res.text().catch(() => '')).slice(0, 3000) : '';
+
+        // Verify content signature to distinguish real exposures from SPA catch-all 200s
+        const isSensitiveFile = item.path.includes('phpmyadmin') || item.path.includes('/pma/') || item.path.includes('wp-config') || item.path.includes('debug.log') || item.path.includes('phpinfo');
+        if (isSensitiveFile) {
+          if (status !== 200) return; // ignore 3xx redirects for sensitive file leaks
+          let matchedSig = false;
+          if (item.path.includes('wp-config')) matchedSig = /(DB_PASSWORD|DB_NAME|DB_USER|AUTH_KEY|SECURE_AUTH_KEY|<\?php)/i.test(bodyText);
+          else if (item.path.includes('debug.log')) matchedSig = /(PHP Notice:|PHP Fatal error:|PHP Warning:|\[\d{2}-[A-Za-z]{3}-\d{4})/i.test(bodyText);
+          else if (item.path.includes('phpinfo')) matchedSig = /(phpinfo\(\)|PHP Version|Configuration File.*php\.ini)/i.test(bodyText);
+          else if (item.path.includes('phpmyadmin') || item.path.includes('/pma/')) matchedSig = /(phpmyadmin|pma_|pma_username|Welcome to phpMyAdmin)/i.test(bodyText);
+          if (!matchedSig) return; // SPA or custom 200 page without true sensitive signature
+        }
+
+        if (item.path === '/wp-login.php' || item.path === '/wp-admin/') {
+          if (status === 200 && bodyText && !/(user_login|wp-login|user_pass|wp-submit|wordpress|wp-admin)/i.test(bodyText)) {
+            return; // Not a real WordPress login page
+          }
+        }
+
+        if (item.path === '/readme.html') {
+          if (status === 200 && bodyText && !/(WordPress|Semantic Personal Publishing Platform)/i.test(bodyText)) {
+            return;
+          }
+        }
+
+        if (item.path.startsWith('/admin') || item.path === '/administrator/') {
+          if (status === 200 && bodyText && !/(login|username|password|admin|auth|sign\s*in|joomla|dashboard)/i.test(bodyText)) {
+            return;
+          }
+        }
+
         if (item.path.includes('wp-')) isWordpress = true;
         if (item.path.includes('php')) isPhp = true;
 
@@ -129,7 +163,7 @@ export async function checkWpAdminSecurity(targetUrl, { timeoutMs = 4000 } = {})
         });
 
         // Flag phpMyAdmin or sensitive leaks as high severity
-        if (item.path.includes('phpmyadmin') || item.path.includes('/pma/') || item.path.includes('wp-config') || item.path.includes('debug.log') || item.path.includes('phpinfo')) {
+        if (isSensitiveFile) {
           findings.push({
             id: 'sensitive-admin-file-exposed',
             category: 'wpadmin',

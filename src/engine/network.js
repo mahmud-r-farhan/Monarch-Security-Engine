@@ -41,7 +41,11 @@ export class NetworkLog {
   finish(entry, { status, statusText, headers, body, redirectedFrom = null, ttfb = null }) {
     entry.status = status;
     entry.statusText = statusText || '';
-    entry.response = { headers: normalizeHeaders(headers) };
+    const bodyStr = typeof body === 'string' ? body : (Buffer.isBuffer(body) ? body.toString('utf8') : (body ? String(body) : null));
+    entry.response = {
+      headers: normalizeHeaders(headers),
+      body: bodyStr ? (bodyStr.length > 500000 ? bodyStr.slice(0, 500000) : bodyStr) : null,
+    };
     entry.mimeType = (entry.response.headers['content-type'] || '').split(';')[0].trim() || null;
     entry.size = body ? Buffer.byteLength(body) : 0;
     entry.timing.total = Date.now() - entry.startedAt;
