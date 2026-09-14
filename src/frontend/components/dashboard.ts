@@ -2,14 +2,29 @@ import { $, escapeHtml } from '../utils.js';
 import { state } from '../state.js';
 
 export function renderDashboard() {
+  const scansCount = state.scansHistory?.length || 0;
+  const upMonitors = state.monitors?.filter(m => m.status === 'up').length || 0;
+  const totalScansEl = $('dash-total-scans');
+  if (totalScansEl) totalScansEl.textContent = String(scansCount);
+  const upMonitorsEl = $('dash-monitors-up');
+  if (upMonitorsEl) upMonitorsEl.textContent = String(upMonitors);
+
   const scan = (state as any).currentScan;
-  if (!scan) return;
+  if (!scan) {
+    $('dash-critical').textContent = '0';
+    $('dash-high').textContent = '0';
+    $('dash-medium').textContent = '0';
+    const sevBars = $('sev-bars');
+    if (sevBars) sevBars.innerHTML = '<div class="empty">Run or select a scan to view severity analytics</div>';
+    const catList = $('cat-list');
+    if (catList) catList.innerHTML = '<li class="empty">No categories yet</li>';
+    return;
+  }
+
   const counts = (scan as any).score?.counts||{};
   $('dash-critical').textContent = String(counts.critical||0);
   $('dash-high').textContent = String(counts.high||0);
   $('dash-medium').textContent = String(counts.medium||0);
-  $('dash-total-scans').textContent = String(state.scansHistory.length||1);
-  $('dash-monitors-up').textContent = String(state.monitors.filter(m=>m.status==='up').length);
   const total = (scan as any).findings?.length||1;
   const sevBars = $('sev-bars');
   if (sevBars) {

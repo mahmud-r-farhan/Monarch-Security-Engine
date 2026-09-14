@@ -59,14 +59,18 @@ export function setupScanForm(switchViewFn: (name: string) => void) {
     btn.disabled = true;
     btn.textContent = '⏳ Auditing…';
     try {
-      const res = await fetch('/api/poke', {
+      const res = await fetch('/api/recon/wpadmin', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url: target }),
+        body: JSON.stringify({ target }),
       });
-      if (res.ok) {
-        toast('Audited WP & admin resources for ' + target, 'success');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'WP Audit failed');
       }
+      const data = await res.json();
+      renderWpAdmin(data);
+      toast('Audited WP & admin resources for ' + target, 'success');
     } catch (err: any) {
       toast('WP Audit error: ' + err.message, 'error');
     } finally {

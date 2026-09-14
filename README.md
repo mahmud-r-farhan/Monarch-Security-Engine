@@ -8,7 +8,7 @@
 [![Security](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/security.yml/badge.svg)](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/security.yml)
 [![Docker](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/docker.yml/badge.svg)](https://github.com/mahmud-r-farhan/Monarch-Security-Engine/actions/workflows/docker.yml)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.2.0-4f7cff)
+![Version](https://img.shields.io/badge/version-2.3.0-4f7cff)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![Zero native deps](https://img.shields.io/badge/native%20deps-0-success)
 
@@ -23,6 +23,16 @@
 > ⚠️ **Defensive Only** — Monarch is for **educational use, defensive research, and auditing systems you own or are explicitly authorised to test**. Scanning third-party targets without permission is illegal. Passive by design, but you remain responsible for where you point it.
 
 ---
+
+## ✨ What's New in v2.3
+
+- **🛡️ SSRF Crawler Hardening** — Full redirect-chain validation enforcing loopback and private IP blocks on every hop during crawl.
+- **⚡ Synchronous Scan Registration** — Pre-assigned UUID binding eliminates race conditions and 500 errors during concurrent scan initialization.
+- **🔍 Dedicated WP & Admin Reconnaissance** — Standalone `POST /api/recon/wpadmin` endpoint and interactive frontend view with SPA catch-all false-positive protection.
+- **🔐 Enhanced TLS & Untrusted Certificate Diagnostics** — Non-blocking certificate inspection allows evaluating self-signed and expired certs without socket errors.
+- **📦 Complete SARIF Output & CI Automation** — The CLI now automatically outputs `report.sarif` for GitHub Code Scanning and CI pipelines.
+- **🔌 API Response Secret Leak Detection** — NetworkLog response body preservation enables automatic detection of leaked passwords and API keys in API payloads.
+- **📊 Interactive Dashboard Analytics** — Integrated posture cards, severity distribution bars, and category metrics directly in the web platform.
 
 ## ✨ What's New in v2.2
 

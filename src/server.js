@@ -23,6 +23,12 @@ loadEnv();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3000);
 
+let APP_VERSION = '2.3.0';
+try {
+  const pkg = JSON.parse(fsSync.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  if (pkg.version) APP_VERSION = pkg.version;
+} catch {}
+
 const app = express();
 const server = http.createServer(app);
 
@@ -124,7 +130,7 @@ app.get('/api/health', (req, res) => {
   const activeProvider = app.locals.runtimeAiConfig?.provider || detectProvider();
   res.json({
     ok: true,
-    version: '2.1.0',
+    version: APP_VERSION,
     name: 'Monarch Security Engine',
     ai: activeProvider,
     aiConfigured: aiKeyConfigured(),
@@ -172,7 +178,7 @@ app.get('/api/metrics', (req, res) => {
 app.get('/api/docs', (req, res) => {
   res.json({
     name: 'Monarch Security Engine API',
-    version: '2.1.0',
+    version: APP_VERSION,
     endpoints: [
       { method: 'GET', path: '/api/health', description: 'Service health and status' },
       { method: 'GET', path: '/api/metrics', description: 'Prometheus metrics' },
@@ -294,7 +300,7 @@ app.use((err, req, res, next) => {
 scanRegistry.startTtlCleanup();
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  🦋  Monarch Security Engine v2.1  →  http://0.0.0.0:${PORT}`);
+  console.log(`\n  🦋  Monarch Security Engine v${APP_VERSION}  →  http://0.0.0.0:${PORT}`);
   console.log(`      AI default: ${detectProvider()}   crawler: ${process.env.CRAWLER || 'fetch'}   reports: ${scanRegistry.reportDir}`);
   console.log(`      Static: ${staticDir}   Max concurrent: ${scanRegistry.maxConcurrent}\n`);
 });
