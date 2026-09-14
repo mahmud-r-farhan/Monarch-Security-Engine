@@ -168,3 +168,42 @@ test('WordPress and Admin security analyzer detects exposed login and user enume
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('WordPress and Admin security analyzer ignores catch-all SPA pages without signatures', async () => {
+  const server = createServer((req, res) => {
+    // SPA catch-all returns 200 HTML on all routes
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end('<!doctype html><html><head><title>My React App</title></head><body><div id="root">App Content</div></body></html>');
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = server.address().port;
+  const targetUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const result = await checkWpAdminSecurity(targetUrl, { timeoutMs: 1500 });
+    // Should NOT flag sensitive admin file exposed or WordPress active
+    assert.equal(result.isWordpress, false);
+    assert.equal(result.findings.some(f => f.id === 'sensitive-admin-file-exposed'), false);
+    assert.equal(result.findings.some(f => f.id === 'wp-login-exposed'), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('NetworkLog preserves response body and enables API secret leak detection', async () => {
+  const { NetworkLog } = await import('../src/engine/network.js');
+  const log = new NetworkLog();
+  const entry = log.start({ url: 'http://api.internal/v1/auth', type: 'fetch' });
+  const payload = JSON.stringify({ token: 'xyz', password: 'supersecret_admin_pass' });
+  log.finish(entry, {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+    body: Buffer.from(payload),
+  });
+
+  assert.ok(entry.response?.body, 'Response body should be attached to entry.response');
+  const findings = checkApiSecurity({}, log);
+  assert.ok(findings.some(f => f.id.startsWith('api-sensitive-field-leak')));
+});
+
